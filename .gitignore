@@ -1,0 +1,5 @@
+.env
+/storage/logs/
+/tests/storage
+/tmp
+/pkg/queue

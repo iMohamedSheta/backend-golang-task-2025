@@ -1,0 +1,163 @@
+basePath: /api/v1
+definitions:
+  enums.UserRole:
+    enum:
+    - customer
+    - admin
+    type: string
+    x-enum-varnames:
+    - RoleCustomer
+    - RoleAdmin
+  requests.LoginRequest:
+    properties:
+      email:
+        example: test@test.com
+        type: string
+      password:
+        example: "123456789"
+        maxLength: 30
+        minLength: 8
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  response.BadRequestResponse:
+    description: Bad request error response
+    properties:
+      error_code:
+        example: BAD_REQUEST
+        type: string
+      message:
+        example: Bad request
+        type: string
+    type: object
+  response.ServerErrorResponse:
+    description: Internal server error response
+    properties:
+      error_code:
+        example: INTERNAL_ERROR
+        type: string
+      message:
+        example: Internal Server Error
+        type: string
+    type: object
+  response.ValidationErrorResponse:
+    description: Validation error response with field errors
+    properties:
+      data:
+        additionalProperties: {}
+        type: object
+      error_code:
+        example: VALIDATION_ERROR
+        type: string
+      message:
+        example: Validation failed
+        type: string
+    type: object
+  responses.LoginResponse:
+    properties:
+      data:
+        properties:
+          access_token:
+            example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+            type: string
+          refresh_token:
+            example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+            type: string
+          user:
+            properties:
+              created_at:
+                example: "2024-01-01T00:00:00Z"
+                type: string
+              email:
+                example: user@example.com
+                type: string
+              first_name:
+                example: John
+                type: string
+              id:
+                example: 1
+                type: integer
+              is_active:
+                example: true
+                type: boolean
+              is_admin:
+                example: false
+                type: boolean
+              last_login_at:
+                example: "2024-01-01T00:00:00Z"
+                type: string
+              last_name:
+                example: Doe
+                type: string
+              phone_number:
+                example: "+1234567890"
+                type: string
+              role:
+                allOf:
+                - $ref: '#/definitions/enums.UserRole'
+                example: customer
+              updated_at:
+                example: "2024-01-01T00:00:00Z"
+                type: string
+            type: object
+        type: object
+      message:
+        example: User logged in successfully
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: mohamed15.sheta15@gmail.com
+    name: iMohamedSheta
+    url: https://github.com/iMohamedSheta
+  description: Order Processing System API
+  license:
+    name: MIT License
+    url: https://opensource.org/licenses/MIT
+  title: TaskGo API
+  version: "1.0"
+paths:
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user with email and password
+      parameters:
+      - description: Login request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Login successful
+          schema:
+            $ref: '#/definitions/responses.LoginResponse'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/response.BadRequestResponse'
+        "422":
+          description: Validation error
+          schema:
+            $ref: '#/definitions/response.ValidationErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/response.ServerErrorResponse'
+      summary: User login
+      tags:
+      - Authentication
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

@@ -66,14 +66,14 @@ Design and implement the following entities:
 
 #### User Management
 
-- `POST /api/v1/users` - Create user
-- `GET /api/v1/users/{id}` - Get user profile
-- `PUT /api/v1/users/{id}` - Update user profile
+- `POST /api/v1/users` - Create user // No Auth (Register)
+- `GET /api/v1/users/{id}` - Get user profile // Auth (admin || the user himself)
+- `PUT /api/v1/users/{id}` - Update user profile // Auth (admin || the user himself)
 
 #### Product Management
 
-- `GET /api/v1/products` - List products (with pagination)
-- `GET /api/v1/products/{id}` - Get product details
+- `GET /api/v1/products` - List products (with pagination) // No Auth
+- `GET /api/v1/products/{id}` - Get product details // No Auth
 - `POST /api/v1/products` - Create product (admin)
 - `PUT /api/v1/products/{id}` - Update product (admin)
 - `GET /api/v1/products/{id}/inventory` - Check inventory
