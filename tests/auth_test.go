@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"taskgo/internal/api/handlers"
+	"taskgo/internal/api/middleware"
 	"taskgo/internal/api/requests"
 	"taskgo/internal/database/models"
 	"taskgo/pkg/database"
@@ -39,7 +40,8 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 
 	w, c := createTestContext("POST", "/login", loginRequest)
 
-	handler.Login(c)
+	wrappedLogin := middleware.HandleErrors(handler.Login)
+	wrappedLogin(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
@@ -63,7 +65,8 @@ func TestAuthHandler_Login_InvalidCredentials(t *testing.T) {
 	}
 
 	w, c := createTestContext("POST", "/login", loginRequest)
-	handler.Login(c)
+	wrappedLogin := middleware.HandleErrors(handler.Login)
+	wrappedLogin(c)
 
 	assertValidationError(t, w, map[string]string{
 		"email": "User not found",
@@ -81,7 +84,8 @@ func TestAuthHandler_Login_InvalidJSON(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Request = req
 
-	handler.Login(c)
+	wrappedLogin := middleware.HandleErrors(handler.Login)
+	wrappedLogin(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

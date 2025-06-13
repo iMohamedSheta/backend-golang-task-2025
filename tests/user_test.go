@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"taskgo/internal/api/handlers"
+	"taskgo/internal/api/middleware"
 	"taskgo/internal/api/requests"
 	"taskgo/internal/database/models"
 	"taskgo/pkg/database"
@@ -36,7 +37,8 @@ func TestUserHandler_CreateUser_Success(t *testing.T) {
 
 	w, c := createTestContext("POST", "/users", createUserRequest)
 
-	handler.CreateUser(c)
+	wrappedCreateUser := middleware.HandleErrors(handler.CreateUser)
+	wrappedCreateUser(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 
@@ -90,7 +92,8 @@ func TestUserHandler_CreateUser_DuplicateEmail(t *testing.T) {
 	}
 
 	w, c := createTestContext("POST", "/users", createUserRequest)
-	handler.CreateUser(c)
+	wrappedCreateUser := middleware.HandleErrors(handler.CreateUser)
+	wrappedCreateUser(c)
 
 	assertValidationError(t, w, map[string]string{
 		"email": "Email is already taken",
@@ -108,7 +111,8 @@ func TestUserHandler_CreateUser_InvalidData(t *testing.T) {
 	}
 
 	w, c := createTestContext("POST", "/users", createUserRequest)
-	handler.CreateUser(c)
+	wrappedCreateUser := middleware.HandleErrors(handler.CreateUser)
+	wrappedCreateUser(c)
 
 	assertValidationError(t, w, map[string]string{
 		"email":        "Email is required",
