@@ -47,7 +47,12 @@ func (s *UserService) CreateUser(req *requests.CreateUserRequest) (*models.User,
 
 // Get user by id
 func (s *UserService) GetUserById(id string) (*models.User, error) {
-	return s.userRepository.FindById(id)
+	user, err := s.userRepository.FindById(id)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, pkgErrors.NewNotFoundError("NotFoundError: user not found", "NotFoundError: user not found", err)
+	}
+
+	return user, nil
 }
 
 // Update user

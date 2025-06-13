@@ -35,50 +35,40 @@ func NewOrderHandler() *OrderHandler {
 	}
 }
 
-func (h *OrderHandler) CreateOrder(c *gin.Context) {
+func (h *OrderHandler) CreateOrder(c *gin.Context) error {
 	var req requests.CreateOrderRequest
 	if err := utils.BindToRequestAndExtractFields(c, &req); err != nil {
-		logger.Log().Error("Failed to bind create order request", zap.Error(err))
-		response.BadRequestBindingJson(c, err)
-		return
+		return errors.NewBadRequestBindingError("", "Failed to bind create order request", err)
 	}
 
 	authUser, authorizeErr := helpers.GetAuthUser(c)
 	if authorizeErr != nil {
-		response.UnauthorizedJson(c, authorizeErr)
-		return
+		return authorizeErr
 	}
 
 	// sync: Policy Check
 	if !h.orderPolicy.CanCreate(authUser) {
-		response.UnauthorizedJson(c, errors.NewUnAuthorizedError("Unauthorized", "You are not allowed to create order", nil))
-		return
+		return errors.NewUnAuthorizedError("Unauthorized", "You are not allowed to create order", nil)
 	}
 
 	// sync: Validation
 	valid, validErrorsList := validate.ValidateRequest(&req)
 	if !valid {
-		validErrors := errors.NewValidationError(validErrorsList)
-		response.ValidationErrorJson(c, validErrors)
-		return
+		return errors.NewValidationError(validErrorsList)
 	}
 
 	// sync: Service Call -> create order
 	order, err := h.orderService.CreateOrder(&req)
 	if err != nil {
 		if validError, ok := errors.AsValidationError(err); ok {
-			response.ValidationErrorJson(c, validError)
-			return
+			return validError
 		}
 
 		if serverError, ok := errors.AsServerError(err); ok {
-			response.ServerErrorJson(c, serverError)
-			return
+			return serverError
 		}
 
-		logger.Log().Error("Failed to create order", zap.Error(err))
-		response.ServerErrorJson(c, errors.NewServerError("Internal Server Error: Failed to create order", "Internal Server Error: Failed to create order", err))
-		return
+		return errors.NewServerError("Internal Server Error: Failed to create order", "Internal Server Error: Failed to create order", err)
 	}
 
 	// Async chain of tasks -> inventory check -> process payment -> order fulfillment -> after that other tasks are independent (notifications, reporting) can be handled in another way
@@ -101,12 +91,12 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	if err != nil {
 		// Dispatching failure should be handled also to mark the order status but skip for now
 		logger.Log().Error("Failed to dispatch order processing chain", zap.Uint("order_id", order.ID), zap.Error(err))
-		response.ServerErrorJson(c, errors.NewServerError("Internal Server Error: Failed to dispatch order processing chain", "Internal Server Error: Failed to dispatch order processing chain", err))
-		return
+		return errors.NewServerError("Internal Server Error: Failed to dispatch order processing chain", "Internal Server Error: Failed to dispatch order processing chain", err)
 	}
 
 	var orderResponse responses.OrderResponse
 	orderResponse.Response(c, order)
+	return nil
 }
 
 func (h *OrderHandler) GetOrder(c *gin.Context) {

@@ -9,7 +9,6 @@ import (
 	"taskgo/internal/repository"
 	pkgErrors "taskgo/pkg/errors"
 	"taskgo/pkg/logger"
-	"taskgo/pkg/validate"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -24,11 +23,6 @@ func NewAuthService(userRepo *repository.UserRepository) *AuthService {
 }
 
 func (s *AuthService) Login(req *requests.LoginRequest) (string, string, *models.User, error) {
-	// Validate request
-	valid, errors := validate.ValidateRequest(req)
-	if !valid {
-		return "", "", nil, pkgErrors.NewValidationError(errors)
-	}
 
 	user, err := s.userRepository.FindByEmail(req.Email)
 

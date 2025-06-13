@@ -8,12 +8,11 @@ import (
 	"taskgo/internal/repository"
 	"taskgo/internal/services"
 	pkgErrors "taskgo/pkg/errors"
-	"taskgo/pkg/logger"
 	"taskgo/pkg/response"
 	"taskgo/pkg/utils"
+	"taskgo/pkg/validate"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 )
 
 type AuthHandler struct {
@@ -44,46 +43,35 @@ func NewAuthHandler() *AuthHandler {
 //		@Failure		400		{object}	response.BadRequestResponse	"Bad request"
 //		@Failure		422		{object}	response.ValidationErrorResponse "Validation error"
 //		@Failure		500		{object}	response.ServerErrorResponse "Internal server error"
-func (h *AuthHandler) Login(c *gin.Context) {
+func (h *AuthHandler) Login(c *gin.Context) error {
 	var req requests.LoginRequest
 
 	if err := utils.BindToRequestAndExtractFields(c, &req); err != nil {
-		logger.Log().Error("Failed to bind login request", zap.Error(err))
-		response.BadRequestBindingJson(c, err)
-		return
+		return pkgErrors.NewBadRequestError("Bad request", "Failed to bind login request", err)
 	}
 
+	// Validate request
+	valid, errors := validate.ValidateRequest(&req)
+	if !valid {
+		return pkgErrors.NewValidationError(errors)
+	}
+
+	// Login user
 	token, refreshToken, user, err := h.authService.Login(&req)
 
 	if err != nil {
-		// Check if it's a validation error
-		if valErr, ok := pkgErrors.AsValidationError(err); ok {
-			response.ValidationErrorJson(c, valErr)
-			return
-		}
-
-		// Check if it's a custom server error (with public message)
-		if serverErr, ok := pkgErrors.AsServerError(err); ok {
-			logger.Log().Error("Failed to login user", zap.Error(err))
-			response.ServerErrorJson(c, serverErr)
-			return
-		}
-
-		// Otherwise treat as unknown error
-		logger.Log().Error("Failed to login user", zap.Error(err))
-		response.ServerErrorJson(c, nil)
-		return
+		return err
 	}
 
 	var loginResponse responses.LoginResponse
 	loginResponse.Response(c, user, token, refreshToken)
+	return nil
 }
 
-func (h *AuthHandler) RefreshAccessToken(c *gin.Context) {
+func (h *AuthHandler) RefreshAccessToken(c *gin.Context) error {
 	authHeader := c.GetHeader("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		response.BadRequestJson(c, "Missing or invalid Authorization header")
-		return
+		return pkgErrors.NewUnAuthorizedError("Unauthorized", "No authorization header provided", nil)
 	}
 
 	refreshToken := strings.TrimPrefix(authHeader, "Bearer ")
@@ -92,25 +80,20 @@ func (h *AuthHandler) RefreshAccessToken(c *gin.Context) {
 
 	if err != nil {
 		if unAuthorizedErr, ok := pkgErrors.AsUnAuthorizedError(err); ok {
-			response.UnauthorizedJson(c, unAuthorizedErr)
-			return
+			return unAuthorizedErr
 		}
 
-		// Check if it's a custom server error (with public message)
 		if serverErr, ok := pkgErrors.AsServerError(err); ok {
-			logger.Log().Error("Failed to refresh access token", zap.Error(err))
-			response.ServerErrorJson(c, serverErr)
-			return
+			return serverErr
 		}
 
-		// Unhandled error
-		logger.Log().Error("Failed to refresh access token With unknown error", zap.Error(err))
-		response.ServerErrorJson(c, nil)
-		return
+		return pkgErrors.NewServerError("Internal server error", "Failed to refresh access token", err)
 	}
 
 	// Return new access token
 	response.Json(c, "Access token refreshed successfully", map[string]any{
 		"access_token": accessToken,
 	}, http.StatusOK)
+
+	return nil
 }

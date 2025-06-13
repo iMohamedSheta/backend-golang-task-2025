@@ -8,13 +8,11 @@ import (
 	"taskgo/internal/repository"
 	"taskgo/internal/services"
 	"taskgo/pkg/errors"
-	"taskgo/pkg/logger"
 	"taskgo/pkg/response"
 	"taskgo/pkg/utils"
 	"taskgo/pkg/validate"
 
 	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 )
 
 type ProductHandler struct {
@@ -38,25 +36,21 @@ func NewProductHandler() *ProductHandler {
 	}
 }
 
-func (h *ProductHandler) ListProducts(c *gin.Context) {
+func (h *ProductHandler) ListProducts(c *gin.Context) error {
 	var ProductFilters filters.ProductFilters
 
 	if !h.productPolicy.CanViewAny(nil) {
-		response.UnauthorizedJson(c, errors.NewUnAuthorizedError("You are not allowed to view this product", "user is not allowed to view this product", nil))
-		return
+		return errors.NewUnAuthorizedError("UnauthorizedError: You are not allowed to view this product", "user is not allowed to view this product", nil)
 	}
 
 	// Bind URL query parameters to filters struct
 	if err := c.ShouldBindQuery(&ProductFilters); err != nil {
-		logger.Log().Error("Failed to bind product filters", zap.Error(err))
-		response.BadRequestBindingJson(c, err)
-		return
+		return errors.NewBadRequestError("", "BadRequestError: Failed to bind URL query parameters to filters struct", err)
 	}
 
 	products, total, err := h.productService.GetPaginatedProducts(&ProductFilters)
 	if err != nil {
-		response.ServerErrorJson(c, errors.NewServerError("Failed to get products", "failed to get products", err))
-		return
+		return errors.NewServerError("internal server error", "Err: Failed to get paginated products using productService", err)
 	}
 
 	var productResources []map[string]any
@@ -86,21 +80,25 @@ func (h *ProductHandler) ListProducts(c *gin.Context) {
 			"total": total,
 		},
 	}, 200)
+
+	return nil
 }
 
-func (h *ProductHandler) GetProduct(c *gin.Context) {
+func (h *ProductHandler) GetProduct(c *gin.Context) error {
 	productId := c.Param("id")
 
 	// Policy check
 	if !h.productPolicy.CanView(nil, productId) {
-		response.UnauthorizedJson(c, errors.NewUnAuthorizedError("You are not allowed to view this product", "user is not allowed to view this product", nil))
-		return
+		return errors.NewUnAuthorizedError("UnauthorizedError: You are not allowed to view this product", "UnauthorizedError: user is not allowed to view this product", nil)
 	}
 
 	targetProduct, err := h.productService.GetProductById(productId)
 	if err != nil {
-		response.NotFoundJson(c, errors.NewNotFoundError("Product not found", "product with id "+productId+" not found", nil))
-		return
+		if notFoundErr, ok := errors.AsNotFoundError(err); ok {
+			return notFoundErr
+		}
+
+		return errors.NewServerError("internal server error", "Err: Failed to get product by id", err)
 	}
 
 	response.Json(c, "Product retrieved successfully", map[string]any{
@@ -120,41 +118,35 @@ func (h *ProductHandler) GetProduct(c *gin.Context) {
 			"updated_at": targetProduct.UpdatedAt,
 		},
 	}, 200)
+
+	return nil
 }
 
 // Create New Product (only admins)
-func (h *ProductHandler) CreateProduct(c *gin.Context) {
+func (h *ProductHandler) CreateProduct(c *gin.Context) error {
 	var req requests.CreateProductRequest
 
 	if err := utils.BindToRequestAndExtractFields(c, &req); err != nil {
-		logger.Log().Error("Failed to bind create product request", zap.Error(err))
-		response.BadRequestBindingJson(c, err)
-		return
+		return errors.NewBadRequestBindingError("", "BadRequestBindingError: Failed to bind request body to request struct", err)
 	}
 
 	authUser, authorizeErr := helpers.GetAuthUser(c)
 	if authorizeErr != nil {
-		response.UnauthorizedJson(c, authorizeErr)
-		return
+		return authorizeErr
 	}
 
 	if !h.productPolicy.CanCreate(authUser) {
-		response.UnauthorizedJson(c, errors.NewUnAuthorizedError("Unauthorized", "You are not allowed to create a product", nil))
-		return
+		return errors.NewUnAuthorizedError("Unauthorized", "You are not allowed to create a product", nil)
 	}
 
 	valid, validErrorsList := validate.ValidateRequest(&req)
 	if !valid {
-		validErrors := errors.NewValidationError(validErrorsList)
-		response.ValidationErrorJson(c, validErrors)
-		return
+		return errors.NewValidationError(validErrorsList)
 	}
 
 	product, err := h.productService.CreateProduct(&req)
 	if err != nil {
-		logger.Log().Error("Failed to create product", zap.Error(err))
-		response.ServerErrorJson(c, errors.NewServerError("Failed to create product", "Failed to create product", err))
-		return
+		return errors.NewServerError("Failed to create product", "Failed to create product", err)
 	}
 
 	response.Json(c, "Product created successfully", map[string]any{
@@ -168,46 +160,40 @@ func (h *ProductHandler) CreateProduct(c *gin.Context) {
 			"updated_at": product.UpdatedAt,
 		},
 	}, 201)
+
+	return nil
 }
 
-func (h *ProductHandler) UpdateProduct(c *gin.Context) {
+func (h *ProductHandler) UpdateProduct(c *gin.Context) error {
 	var req requests.UpdateProductRequest
 
 	// This binds and stores the body so it can be reused
 	if err := utils.BindToRequestAndExtractFields(c, &req); err != nil {
-		logger.Log().Error("Failed to bind update product request", zap.Error(err))
-		response.BadRequestBindingJson(c, err)
-		return
+		return errors.NewBadRequestBindingError("", "BadRequestBindingError: Failed to bind request body to request struct", err)
 	}
 
 	productId := c.Param("id")
 	authUser, authorizeErr := helpers.GetAuthUser(c)
 	if authorizeErr != nil {
-		response.UnauthorizedJson(c, authorizeErr)
-		return
+		return authorizeErr
 	}
 
 	if !h.productPolicy.CanUpdate(authUser, productId) {
-		response.UnauthorizedJson(c, errors.NewUnAuthorizedError("Unauthorized", "You are not allowed to update the product", nil))
-		return
+		return errors.NewUnAuthorizedError("Unauthorized", "You are not allowed to update the product", nil)
 	}
 
 	valid, validErrorsList := validate.ValidateRequest(&req)
 	if !valid {
-		validErrors := errors.NewValidationError(validErrorsList)
-		response.ValidationErrorJson(c, validErrors)
-		return
+		return errors.NewValidationError(validErrorsList)
 	}
 
 	product, err := h.productService.UpdateProduct(productId, &req)
 	if err != nil {
 		if notfoundErr, ok := errors.AsNotFoundError(err); ok {
-			response.NotFoundJson(c, notfoundErr)
-			return
+			return notfoundErr
 		}
-		logger.Log().Error("Failed to update product", zap.Error(err))
-		response.ServerErrorJson(c, errors.NewServerError("Failed to update product", "Failed to update product", err))
-		return
+
+		return errors.NewServerError("Failed to update product", "Failed to update product", err)
 	}
 
 	response.Json(c, "Product updated successfully", map[string]any{
@@ -221,6 +207,8 @@ func (h *ProductHandler) UpdateProduct(c *gin.Context) {
 			"updated_at": product.UpdatedAt,
 		},
 	}, 201)
+
+	return nil
 }
 
 // TODO: add inventory check implementation

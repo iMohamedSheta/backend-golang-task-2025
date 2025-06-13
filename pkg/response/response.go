@@ -110,9 +110,9 @@ func ValidationErrorJson(c *gin.Context, validationError *pkgErrors.ValidationEr
 }
 
 // Bad request response
-func BadRequestJson(c *gin.Context, message string) {
+func BadRequestErrorJson(c *gin.Context, badRequestError *pkgErrors.BadRequestError) {
 	resp := &BadRequestResponse{
-		Message:   message,
+		Message:   badRequestError.PublicError(),
 		ErrorCode: string(enums.ErrCodeBadRequest),
 	}
 	c.JSON(enums.ErrCodeBadRequest.StatusCode(), resp)
@@ -137,9 +137,14 @@ func UnauthorizedJson(c *gin.Context, err *pkgErrors.UnAuthorizedError) {
 }
 
 // Bad request json binding response
-func BadRequestBindingJson(c *gin.Context, err error) {
+func BadRequestBindingJson(c *gin.Context, badRequestBindingErr *pkgErrors.BadRequestBindingError) {
 	var errorMessage string
 	var fieldErrors map[string]any
+
+	err := badRequestBindingErr.Err
+	if err == nil {
+		err = badRequestBindingErr
+	}
 
 	// Check if it's a JSON syntax error
 	if jsonErr, ok := err.(*json.SyntaxError); ok {
@@ -156,7 +161,11 @@ func BadRequestBindingJson(c *gin.Context, err error) {
 
 	// if it's type error handle it as validation error
 	if jsonErr, ok := err.(*json.UnmarshalTypeError); ok {
-		fieldErrors[jsonErr.Field] = fmt.Sprintf("Expected %s but received %s",
+		field := jsonErr.Field
+		if field == "" {
+			field = "unknown"
+		}
+		fieldErrors[field] = fmt.Sprintf("Expected %s but received %s",
 			jsonErr.Type.String(), jsonErr.Value)
 	} else {
 		resp := &BadRequestResponse{

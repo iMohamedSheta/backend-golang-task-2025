@@ -21,6 +21,7 @@ import (
 
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"gorm.io/gorm"
 )
 
@@ -253,6 +254,8 @@ func loadLoggers() {
 			ErrorOutputPaths: []string{"stderr"},
 			EncoderConfig:    zap.NewProductionEncoderConfig(),
 		}
+
+		cfg.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
 
 		if name == defaultChannel {
 			logger.LoadDefault(path, cfg)
