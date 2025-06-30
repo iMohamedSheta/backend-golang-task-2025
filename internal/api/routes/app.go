@@ -3,10 +3,10 @@ package routes
 import (
 	"taskgo/internal/api/handlers"
 	"taskgo/internal/api/middleware"
-	"taskgo/internal/config"
-	"taskgo/internal/tasks"
-	"taskgo/pkg/logger"
+	"taskgo/internal/deps"
+	"taskgo/pkg/ioc"
 	"taskgo/pkg/response"
+	"taskgo/pkg/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/hibiken/asynqmon"
@@ -28,17 +28,20 @@ func RegisterRoutes() *gin.Engine {
 
 	api := r.Group("/api/v1")
 
+	websocketApi := api.Group("/ws")
+	registerWebsocketRoutes(websocketApi)
+
 	// User Authentication
-	authHandler := handlers.NewAuthHandler()
+	authHandler := deps.App[*handlers.AuthHandler]()
 	api.POST("/login", middleware.HandleErrors(authHandler.Login))                      // Done
 	api.POST("/refresh-token", middleware.HandleErrors(authHandler.RefreshAccessToken)) // Done
 
 	// Create User (register customer)
-	userHandler := handlers.NewUserHandler()
+	userHandler := deps.App[*handlers.UserHandler]()
 	api.POST("/users", middleware.HandleErrors(userHandler.CreateUser)) // Done
 
 	// Product view
-	productHandler := handlers.NewProductHandler()
+	productHandler := deps.App[*handlers.ProductHandler]()
 	api.GET("/products", middleware.HandleErrors(productHandler.ListProducts))   // Done
 	api.GET("/products/:id", middleware.HandleErrors(productHandler.GetProduct)) // Done
 	api.GET("/products/:id/inventory", productHandler.CheckInventory)            // Skipped
@@ -69,40 +72,53 @@ func RegisterRoutes() *gin.Engine {
 		api.PUT("/products/:id", middleware.AdminOnly(), middleware.HandleErrors(productHandler.UpdateProduct)) // Done
 
 		// Order Management (VIP)
-		orderHandler := handlers.NewOrderHandler()
+		orderHandler := deps.App[*handlers.OrderHandler]()
 		api.POST("/orders", middleware.HandleErrors(orderHandler.CreateOrder)) // Working on it
 		api.GET("/orders", orderHandler.ListUserOrders)
 		api.GET("/orders/:id", orderHandler.GetOrder)
 		api.PUT("/orders/:id/cancel", orderHandler.CancelOrder)
 		api.GET("/orders/:id/status", orderHandler.GetOrderStatus)
-
-		// WebSocket Notifications
-		notificationHandler := handlers.NotificationHandler{}
-		api.GET("notifications/ws", notificationHandler.WsNotificationHandler)
 	}
 
 	return r
 }
 
+func registerWebsocketRoutes(wsApi *gin.RouterGroup) {
+	// WebSocket Notifications
+	notificationHandler := deps.App[*handlers.NotificationHandler]()
+	wsApi.Use(middleware.WebSocketAuth())
+	{
+		wsApi.GET("/notifications", notificationHandler.WsUserNotificationHandler)
+	}
+}
+
 func registerWebRoutes(web *gin.Engine) {
 	// Root health check
 	web.GET("/health", func(c *gin.Context) {
-		logger.Log().Info("Health check hit")
+		deps.Log().Log().Info("Health check hit")
 		response.Json(c, "Welcome to the Order Processing System", gin.H{"status": "healthy"}, 200)
 	})
 
 	// If it's not in production, show swagger docs
-	if config.App.GetString("app.env", "prod") != "prod" {
+	if deps.Config().GetString("app.env", "prod") != "prod" {
 		web.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	}
 
 	// Monitoring asynq jobs
-	ops, _ := tasks.GetRedisJobsClientOptions()
+	ops, _ := utils.GetRedisQueueClientOptionsForAsynq("redis.connections.queue")
 	h := asynqmon.New(asynqmon.Options{
 		RootPath:     "/monitor",
 		RedisConnOpt: ops,
 	})
 
-	web.Any("/monitor/*a", middleware.AdminOnly(), gin.WrapH(h))
+	web.GET("/monitor/*a", gin.WrapH(h))
+
+	web.GET("/dependencies", func(c *gin.Context) {
+		deps := ioc.AppContainer().GetRegisteredService()
+		response.Json(c, "Dependencies loaded", deps, 200)
+	})
+	notificationHandler := deps.App[*handlers.NotificationHandler]()
+	web.GET("/test", middleware.Auth(), notificationHandler.TestSendNotification)
+
 }

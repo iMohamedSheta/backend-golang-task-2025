@@ -3,16 +3,15 @@ package handlers
 import (
 	"taskgo/internal/api/requests"
 	"taskgo/internal/api/responses"
+	"taskgo/internal/deps"
 	"taskgo/internal/helpers"
+	"taskgo/internal/notification"
 	"taskgo/internal/policies"
-	"taskgo/internal/repository"
 	"taskgo/internal/services"
 	"taskgo/internal/tasks"
 	"taskgo/pkg/errors"
 	"taskgo/pkg/logger"
 	"taskgo/pkg/response"
-	"taskgo/pkg/utils"
-	"taskgo/pkg/validate"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,82 +19,90 @@ import (
 )
 
 type OrderHandler struct {
+	Handler
 	orderService *services.OrderService
 	orderPolicy  *policies.OrderPolicy
+	log          *logger.Manager
 }
 
-func NewOrderHandler() *OrderHandler {
-	orderRepository := repository.NewOrderRepository()
-	productRepository := repository.NewProductRepository()
-	inventoryRepository := repository.NewInventoryRepository()
-	inventoryService := services.NewInventoryService(inventoryRepository, productRepository)
+// NewOrderHandler return a new OrderHandler
+func NewOrderHandler(orderService *services.OrderService, orderPolicy *policies.OrderPolicy) *OrderHandler {
 	return &OrderHandler{
-		orderService: services.NewOrderService(inventoryService, orderRepository, productRepository),
-		orderPolicy:  &policies.OrderPolicy{},
+		orderService: orderService,
+		orderPolicy:  orderPolicy,
+		log:          deps.Log(),
 	}
 }
 
-func (h *OrderHandler) CreateOrder(c *gin.Context) error {
+// @Summary     Create order
+// @Description Create a new order
+// @Tags        Orders
+// @Accept      json
+// @Produce     json
+//
+// @Param       request  body      requests.CreateOrderRequest       true  "Create order request"
+//
+// @Success     200      {object}  responses.CreateOrderResponse     "Order created successfully"
+// @Failure     400      {object}  response.BadRequestResponse       "Bad Request"
+// @Failure     401      {object}  response.UnauthorizedResponse     "Unauthorized Action"
+// @Failure     422      {object}  response.ValidationErrorResponse  "Validation Error"
+// @Failure     500      {object}  response.ServerErrorResponse      "Internal Server Error"
+//
+// @Router      /orders [post]
+func (h *OrderHandler) CreateOrder(gin *gin.Context) error {
 	var req requests.CreateOrderRequest
-	if err := utils.BindToRequestAndExtractFields(c, &req); err != nil {
+	var err error
+
+	if err = h.BindBodyAndExtractToRequest(gin, &req); err != nil {
 		return errors.NewBadRequestBindingError("", "Failed to bind create order request", err)
 	}
 
-	authUser, authorizeErr := helpers.GetAuthUser(c)
+	authUser, authorizeErr := helpers.GetAuthUser(gin)
 	if authorizeErr != nil {
 		return authorizeErr
 	}
 
-	// sync: Policy Check
 	if !h.orderPolicy.CanCreate(authUser) {
-		return errors.NewUnAuthorizedError("Unauthorized", "You are not allowed to create order", nil)
+		return errors.NewForbiddenError("you can't create order", "user doesn't have authorization to create a new order", nil)
 	}
 
-	// sync: Validation
-	valid, validErrorsList := validate.ValidateRequest(&req)
-	if !valid {
-		return errors.NewValidationError(validErrorsList)
+	if err = deps.Validator().ValidateRequest(&req); err != nil {
+		return err
 	}
 
-	// sync: Service Call -> create order
-	order, err := h.orderService.CreateOrder(&req)
+	order, err := h.orderService.CreateOrder(gin.Request.Context(), &req)
 	if err != nil {
-		if validError, ok := errors.AsValidationError(err); ok {
-			return validError
-		}
-
-		if serverError, ok := errors.AsServerError(err); ok {
-			return serverError
-		}
-
-		return errors.NewServerError("Internal Server Error: Failed to create order", "Internal Server Error: Failed to create order", err)
+		return err
 	}
 
 	// Async chain of tasks -> inventory check -> process payment -> order fulfillment -> after that other tasks are independent (notifications, reporting) can be handled in another way
-	err = tasks.NewChain().
-		Then(tasks.NewInventoryCheckChainTask(order.ID)).
-		Then(tasks.NewProcessPaymentChainTask(order.ID)).
+	err = tasks.Chain().
+		Then(tasks.NewInventoryCheckTask(order.ID)).
+		Then(tasks.NewProcessPaymentTask(order.ID)).
 		OnQueue(tasks.QueueOrderProcessingChain).
 		MaxRetries(3).
-		Timeout(2 * time.Minute).
+		Timeout(3 * time.Minute).
 		OnSuccess(func(result interface{}) error {
-			logger.Log().Info("Order processing chain completed", zap.Uint("order_id", order.ID))
+			h.log.Channel("default").Info("Order processing chain completed", zap.Uint("order_id", order.ID))
+			// Should dispatch notification task
+			err := deps.Notify().Send(notification.NewOrderCreatedNotification(order.ID), authUser)
+			if err != nil {
+				h.log.Channel("default").Error("Failed to dispatch notification task", zap.Uint("order_id", order.ID), zap.Error(err))
+				return err
+			}
 			return nil
 		}).
 		OnFailure(func(err error) error {
-			logger.Log().Error("Order processing chain failed", zap.Uint("order_id", order.ID), zap.Error(err))
+			h.log.Channel("default").Error("Order processing chain failed", zap.Uint("order_id", order.ID), zap.Error(err))
 			return nil
 		}).
 		Dispatch()
 
 	if err != nil {
-		// Dispatching failure should be handled also to mark the order status but skip for now
-		logger.Log().Error("Failed to dispatch order processing chain", zap.Uint("order_id", order.ID), zap.Error(err))
-		return errors.NewServerError("Internal Server Error: Failed to dispatch order processing chain", "Internal Server Error: Failed to dispatch order processing chain", err)
+		return errors.NewServerError("Internal Server Error: Failed to process the order.", "Internal Server Error: Failed to dispatch order processing chain", err)
 	}
 
-	var orderResponse responses.OrderResponse
-	orderResponse.Response(c, order)
+	responses.SendCreateOrderResponse(gin, order)
 	return nil
 }
 

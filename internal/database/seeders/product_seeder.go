@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"log"
 	"taskgo/internal/database/models"
-	"taskgo/pkg/database"
+	"taskgo/internal/deps"
 	pkgEnums "taskgo/pkg/enums"
 )
 
 func SeedProducts() {
-	db := database.GetDB()
+	db := deps.Gorm().DB
 
 	products := []models.Product{
 		{

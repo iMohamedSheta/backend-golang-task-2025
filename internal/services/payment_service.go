@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -12,7 +13,7 @@ func NewPaymentService() *PaymentService {
 }
 
 // Example to process payment logic
-func (s *PaymentService) ProcessPayment(req any) error {
+func (s *PaymentService) ProcessPayment(ctx context.Context, req any) error {
 	fmt.Printf("🔄 Processing payment for request: %v\n", req)
 	time.Sleep(5 * time.Second)
 	fmt.Println("Payment processed successfully")

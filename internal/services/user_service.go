@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"taskgo/internal/api/requests"
 	"taskgo/internal/database/models"
@@ -26,7 +27,7 @@ func NewUserService(userRepository *repository.UserRepository) *UserService {
  * @param req
  * @return *models.User, error[validationErr, error]
  */
-func (s *UserService) CreateUser(req *requests.CreateUserRequest) (*models.User, error) {
+func (s *UserService) CreateUser(ctx context.Context, req *requests.CreateUserRequest) (*models.User, error) {
 	user := &models.User{
 		Email:       req.Email,
 		Password:    req.Password,
@@ -46,7 +47,7 @@ func (s *UserService) CreateUser(req *requests.CreateUserRequest) (*models.User,
 }
 
 // Get user by id
-func (s *UserService) GetUserById(id string) (*models.User, error) {
+func (s *UserService) GetUserById(ctx context.Context, id string) (*models.User, error) {
 	user, err := s.userRepository.FindById(id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, pkgErrors.NewNotFoundError("NotFoundError: user not found", "NotFoundError: user not found", err)
@@ -56,7 +57,7 @@ func (s *UserService) GetUserById(id string) (*models.User, error) {
 }
 
 // Update user
-func (s *UserService) UpdateUserAndGet(id string, req *requests.UpdateUserRequest) (*models.User, error) {
+func (s *UserService) UpdateUserAndGet(ctx context.Context, id string, req *requests.UpdateUserRequest) (*models.User, error) {
 	updatedFields := make(map[string]any)
 	sentFields := req.GetRequestSentFields()
 	validKeys := utils.GetJSONKeys(req)

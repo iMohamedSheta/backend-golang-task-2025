@@ -5,8 +5,8 @@ func init() {
 }
 
 // logConfig sets the logging configuration for the application.
-func logConfig() {
-	App.Set("log", map[string]any{
+func logConfig(cfg *Config) {
+	cfg.Set("log", map[string]any{
 		"default": "app_log",
 
 		"channels": map[string]any{

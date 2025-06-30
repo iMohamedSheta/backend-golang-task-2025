@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"taskgo/internal/config"
+	"taskgo/internal/deps"
 	"taskgo/pkg/utils"
 
 	"github.com/gin-gonic/gin"
@@ -15,7 +15,7 @@ const (
 
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		rawCors, err := config.App.Get("cors")
+		rawCors, err := deps.Config().Get("cors")
 		if err != nil {
 			c.Next()
 			return

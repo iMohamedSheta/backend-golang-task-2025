@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"taskgo/internal/api/requests"
 	"taskgo/internal/database/models"
@@ -39,7 +40,7 @@ func NewOrderService(inventoryService *InventoryService, orderRepo *repository.O
 // --------------------------------------------------------------------------------------------------------------------
 // Ok that's a problem reserve inventory should be for all the products in one transaction not for each product
 // err := s.inventoryService.ReserveInventory(product, item)
-func (s *OrderService) CreateOrder(req *requests.CreateOrderRequest) (*models.Order, error) {
+func (s *OrderService) CreateOrder(ctx context.Context, req *requests.CreateOrderRequest) (*models.Order, error) {
 	// Create base order
 	order := &models.Order{
 		UserID:          req.UserId,
@@ -79,7 +80,7 @@ func (s *OrderService) CreateOrder(req *requests.CreateOrderRequest) (*models.Or
 		}
 
 		// Validate product quantity is available (no reservation yet)
-		if product.Inventory.Quantity < item.Quantity {
+		if product.Inventories[0].GetTotalQuantity() < item.Quantity {
 			return nil, pkgErrors.NewValidationError(map[string]any{
 				"items": fmt.Sprintf("Product with ID %d has insufficient stock", item.ProductId),
 			})

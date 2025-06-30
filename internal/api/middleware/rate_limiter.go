@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"taskgo/internal/config"
+	"taskgo/internal/deps"
 
 	"github.com/gin-gonic/gin"
 	limiter "github.com/ulule/limiter/v3"
@@ -11,7 +11,7 @@ import (
 
 // in memory rate limiter maybe will use redis store in future
 func RateLimiter() gin.HandlerFunc {
-	globalRateLimiter := config.App.GetString("app.global_rate_limit", "100-M") // Default to 100 requests per minute
+	globalRateLimiter := deps.Config().GetString("app.global_rate_limit", "100-M") // Default to 100 requests per minute
 	rate, _ := limiter.NewRateFromFormatted(globalRateLimiter)
 
 	store := memory.NewStore()

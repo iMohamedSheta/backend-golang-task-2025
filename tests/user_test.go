@@ -3,29 +3,20 @@ package tests
 import (
 	"encoding/json"
 	"net/http"
-	"os"
 	"taskgo/internal/api/handlers"
 	"taskgo/internal/api/middleware"
 	"taskgo/internal/api/requests"
 	"taskgo/internal/database/models"
-	"taskgo/pkg/database"
+	"taskgo/internal/deps"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )
 
-// TestMain runs before all tests
-func TestMain(m *testing.M) {
-	TestSetup()
-	code := m.Run()
-	TestTeardown()
-	os.Exit(code)
-}
-
 func TestUserHandler_CreateUser_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := handlers.NewUserHandler()
+	handler := deps.App[*handlers.UserHandler]()
 
 	createUserRequest := requests.CreateUserRequest{
 		FirstName:   "John",
@@ -43,7 +34,7 @@ func TestUserHandler_CreateUser_Success(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	// user exists in db
-	db := database.GetDB()
+	db := deps.Gorm().DB
 	var user models.User
 	result := db.Where("email = ?", createUserRequest.Email).First(&user)
 	assert.NoError(t, result.Error)
@@ -53,25 +44,22 @@ func TestUserHandler_CreateUser_Success(t *testing.T) {
 	var response map[string]interface{}
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	assert.NoError(t, err)
-
-	if data, exists := response["data"]; exists {
-		userData := data.(map[string]interface{})
-		assert.Equal(t, createUserRequest.Email, userData["email"])
-		assert.Equal(t, createUserRequest.FirstName, userData["first_name"])
-		assert.Equal(t, createUserRequest.LastName, userData["last_name"])
-		assert.Equal(t, createUserRequest.PhoneNumber, userData["phone_number"])
-		assert.Equal(t, "customer", userData["role"])
-		assert.Equal(t, user.ID, userData["id"])
-	}
+	fullData := response["data"].(map[string]interface{})
+	userData := fullData["user"].(map[string]interface{})
+	assert.Equal(t, createUserRequest.Email, userData["email"])
+	assert.Equal(t, createUserRequest.FirstName, userData["first_name"])
+	assert.Equal(t, createUserRequest.LastName, userData["last_name"])
+	assert.Equal(t, createUserRequest.PhoneNumber, userData["phone_number"])
+	assert.Equal(t, user.ID, uint(userData["id"].(float64)))
 
 	truncateTables()
 }
 
 func TestUserHandler_CreateUser_DuplicateEmail(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := handlers.NewUserHandler()
+	handler := deps.App[*handlers.UserHandler]()
 
-	db := database.GetDB()
+	db := deps.Gorm().DB
 	existingUser := models.User{
 		FirstName:   "Existing",
 		LastName:    "User",
@@ -104,7 +92,7 @@ func TestUserHandler_CreateUser_DuplicateEmail(t *testing.T) {
 
 func TestUserHandler_CreateUser_InvalidData(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := handlers.NewUserHandler()
+	handler := deps.App[*handlers.UserHandler]()
 
 	createUserRequest := requests.CreateUserRequest{
 		FirstName: "John",

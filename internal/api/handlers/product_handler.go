@@ -1,136 +1,138 @@
 package handlers
 
 import (
+	"math"
 	"taskgo/internal/api/requests"
+	"taskgo/internal/api/responses"
+	"taskgo/internal/database/models"
+	"taskgo/internal/deps"
 	"taskgo/internal/filters"
 	"taskgo/internal/helpers"
 	"taskgo/internal/policies"
-	"taskgo/internal/repository"
 	"taskgo/internal/services"
 	"taskgo/pkg/errors"
 	"taskgo/pkg/response"
-	"taskgo/pkg/utils"
-	"taskgo/pkg/validate"
 
 	"github.com/gin-gonic/gin"
 )
 
 type ProductHandler struct {
+	Handler
 	productService *services.ProductService
 	productPolicy  *policies.ProductPolicy
 }
 
-func NewProductHandlerWithDeps(productService *services.ProductService, productPolicy *policies.ProductPolicy) *ProductHandler {
+// NewProductHandler return a new ProductHandler
+func NewProductHandler(productService *services.ProductService, productPolicy *policies.ProductPolicy) *ProductHandler {
 	return &ProductHandler{
 		productService: productService,
 		productPolicy:  productPolicy,
 	}
 }
 
-func NewProductHandler() *ProductHandler {
-	productRepo := repository.NewProductRepository()
-	productService := services.NewProductService(productRepo)
-	return &ProductHandler{
-		productService: productService,
-		productPolicy:  &policies.ProductPolicy{},
-	}
-}
-
-func (h *ProductHandler) ListProducts(c *gin.Context) error {
-	var ProductFilters filters.ProductFilters
+// @Summary     List products
+// @Description Retrieves a paginated list of products.
+// @Tags        Products
+// @Accept      json
+// @Produce     json
+//
+// @Param       request    query     filters.ProductFilters           true  "Filter and pagination"
+//
+// @Success     200        {object}  responses.ListProductsResponse   "Success"
+// @Failure     400        {object}  response.BadRequestResponse      "Bad Request"
+// @Failure     401        {object}  response.UnauthorizedResponse    "Unauthorized Action"
+// @Failure     500        {object}  response.ServerErrorResponse     "Internal Server Error"
+//
+// @Router      /products [get]
+func (h *ProductHandler) ListProducts(gin *gin.Context) error {
+	var productFilters filters.ProductFilters
 
 	if !h.productPolicy.CanViewAny(nil) {
 		return errors.NewUnAuthorizedError("UnauthorizedError: You are not allowed to view this product", "user is not allowed to view this product", nil)
 	}
 
 	// Bind URL query parameters to filters struct
-	if err := c.ShouldBindQuery(&ProductFilters); err != nil {
+	if err := gin.ShouldBindQuery(&productFilters); err != nil {
 		return errors.NewBadRequestError("", "BadRequestError: Failed to bind URL query parameters to filters struct", err)
 	}
 
-	products, total, err := h.productService.GetPaginatedProducts(&ProductFilters)
+	products, total, err := h.productService.GetPaginatedProducts(gin.Request.Context(), &productFilters)
 	if err != nil {
 		return errors.NewServerError("internal server error", "Err: Failed to get paginated products using productService", err)
 	}
 
-	var productResources []map[string]any
-
-	for _, product := range products {
-		productResource := map[string]any{
-			"id":          product.ID,
-			"name":        product.Name,
-			"description": product.Description,
-			"price":       product.Price,
-			"category":    product.Category,
-			"status":      product.Status,
-			"sku":         product.SKU,
-			"attributes":  product.Attributes,
-			"brand":       product.Brand,
-			"weight":      product.Weight,
-			"weight_unit": product.WeightUnit,
-			"created_at":  product.CreatedAt,
-			"updated_at":  product.UpdatedAt,
-		}
-		productResources = append(productResources, productResource)
+	var totalPages int
+	if productFilters.PerPage > 0 {
+		totalPages = int(math.Ceil(float64(total) / float64(productFilters.PerPage)))
 	}
 
-	response.Json(c, "Products retrieved successfully", map[string]any{
-		"products": productResources,
-		"meta": map[string]any{
-			"total": total,
-		},
-	}, 200)
+	responses.SendListProductsResponse(gin, products, responses.PaginationMeta{
+		Total:      total,
+		Page:       productFilters.Page,
+		Limit:      productFilters.PerPage,
+		NextPage:   productFilters.Page + 1,
+		PrevPage:   productFilters.Page - 1,
+		TotalPages: totalPages,
+	})
 
 	return nil
 }
 
-func (h *ProductHandler) GetProduct(c *gin.Context) error {
-	productId := c.Param("id")
+// @Summary     Get product by ID
+// @Description Retrieves a product by its ID.
+// @Tags        Products
+// @Accept      json
+// @Produce     json
+//
+// @Param       id         path      string                             true  "Product ID"
+//
+// @Success     200        {object}  responses.GetProductResponse      "Product details retrieved successfully"
+// @Failure     400        {object}  response.BadRequestResponse       "Bad Request"
+// @Failure     404        {object}  response.NotFoundResponse         "Product not found"
+// @Failure     401        {object}  response.UnauthorizedResponse     "Unauthorized Action"
+// @Failure     500        {object}  response.ServerErrorResponse      "Internal Server Error"
+//
+// @Router      /products/{id} [get]
+func (h *ProductHandler) GetProduct(gin *gin.Context) error {
+	productId := gin.Param("id")
 
-	// Policy check
 	if !h.productPolicy.CanView(nil, productId) {
 		return errors.NewUnAuthorizedError("UnauthorizedError: You are not allowed to view this product", "UnauthorizedError: user is not allowed to view this product", nil)
 	}
 
-	targetProduct, err := h.productService.GetProductById(productId)
+	targetProduct, err := h.productService.GetProductById(gin.Request.Context(), productId)
 	if err != nil {
-		if notFoundErr, ok := errors.AsNotFoundError(err); ok {
-			return notFoundErr
-		}
-
-		return errors.NewServerError("internal server error", "Err: Failed to get product by id", err)
+		return err
 	}
 
-	response.Json(c, "Product retrieved successfully", map[string]any{
-		"product": map[string]any{
-			"id":          targetProduct.ID,
-			"name":        targetProduct.Name,
-			"description": targetProduct.Description,
-			"price":       targetProduct.Price,
-			"category":    targetProduct.Category,
-			"status":      targetProduct.Status,
-			"sku":         targetProduct.SKU,
-			"weight":      targetProduct.Weight,
-			"weight_unit": targetProduct.WeightUnit,
-			"attributes":  targetProduct.Attributes,
-
-			"created_at": targetProduct.CreatedAt,
-			"updated_at": targetProduct.UpdatedAt,
-		},
-	}, 200)
-
+	responses.SendGetProductResponse(gin, targetProduct)
 	return nil
 }
 
-// Create New Product (only admins)
-func (h *ProductHandler) CreateProduct(c *gin.Context) error {
+// @Summary     Create a new product
+// @Description Creates a new product with the given details.
+// @Tags        Products
+// @Accept      json
+// @Produce     json
+//
+// @Param       request  body      requests.CreateProductRequest       true  "Create product request body"
+//
+// @Success     201      {object}  responses.CreateProductResponse     "Product created successfully"
+// @Failure     400      {object}  response.BadRequestResponse         "Bad Request"
+// @Failure     401      {object}  response.UnauthorizedResponse       "Unauthorized Action"
+// @Failure     422      {object}  response.ValidationErrorResponse    "Validation Error"
+// @Failure     500      {object}  response.ServerErrorResponse        "Internal Server Error"
+//
+// @Router      /products [post]
+func (h *ProductHandler) CreateProduct(gin *gin.Context) error {
 	var req requests.CreateProductRequest
+	var err error
 
-	if err := utils.BindToRequestAndExtractFields(c, &req); err != nil {
+	if err = h.BindBodyAndExtractToRequest(gin, &req); err != nil {
 		return errors.NewBadRequestBindingError("", "BadRequestBindingError: Failed to bind request body to request struct", err)
 	}
 
-	authUser, authorizeErr := helpers.GetAuthUser(c)
+	authUser, authorizeErr := helpers.GetAuthUser(gin)
 	if authorizeErr != nil {
 		return authorizeErr
 	}
@@ -139,75 +141,65 @@ func (h *ProductHandler) CreateProduct(c *gin.Context) error {
 		return errors.NewUnAuthorizedError("Unauthorized", "You are not allowed to create a product", nil)
 	}
 
-	valid, validErrorsList := validate.ValidateRequest(&req)
-	if !valid {
-		return errors.NewValidationError(validErrorsList)
+	if err = deps.Validator().ValidateRequest(&req); err != nil {
+		return err
 	}
 
-	product, err := h.productService.CreateProduct(&req)
+	var product *models.Product
+	product, err = h.productService.CreateProduct(gin.Request.Context(), &req)
 	if err != nil {
-		return errors.NewServerError("Failed to create product", "Failed to create product", err)
+		return errors.NewServerError("Internal Server Error: Failed to create a new product", "Internal Server Error: Failed to create a new product", err)
 	}
 
-	response.Json(c, "Product created successfully", map[string]any{
-		"product": map[string]any{
-			"id":         product.ID,
-			"name":       product.Name,
-			"price":      product.Price,
-			"sku":        product.SKU,
-			"brand":      product.Brand,
-			"created_at": product.CreatedAt,
-			"updated_at": product.UpdatedAt,
-		},
-	}, 201)
-
+	responses.SendCreateProductResponse(gin, product)
 	return nil
 }
 
-func (h *ProductHandler) UpdateProduct(c *gin.Context) error {
+// @Summary     Update product by ID
+// @Description Updates a product with the given ID and request body.
+// @Tags        Products
+// @Accept      json
+// @Produce     json
+//
+// @Param       id       path      string                             true  "Product ID"
+// @Param       request  body      requests.UpdateProductRequest      true  "Update product request body"
+//
+// @Success     200      {object}  responses.UpdateProductResponse    "Product updated successfully"
+// @Failure     400      {object}  response.BadRequestResponse        "Bad Request"
+// @Failure     401      {object}  response.UnauthorizedResponse      "Unauthorized Action"
+// @Failure     404      {object}  response.NotFoundResponse          "Product Not Found"
+// @Failure     422      {object}  response.ValidationErrorResponse   "Validation Error"
+// @Failure     500      {object}  response.ServerErrorResponse       "Internal Server Error"
+//
+// @Router      /products/{id} [put]
+func (h *ProductHandler) UpdateProduct(gin *gin.Context) error {
 	var req requests.UpdateProductRequest
+	var err error
 
-	// This binds and stores the body so it can be reused
-	if err := utils.BindToRequestAndExtractFields(c, &req); err != nil {
+	if err = h.BindBodyAndExtractToRequest(gin, &req); err != nil {
 		return errors.NewBadRequestBindingError("", "BadRequestBindingError: Failed to bind request body to request struct", err)
 	}
 
-	productId := c.Param("id")
-	authUser, authorizeErr := helpers.GetAuthUser(c)
+	productId := gin.Param("id")
+	authUser, authorizeErr := helpers.GetAuthUser(gin)
 	if authorizeErr != nil {
 		return authorizeErr
 	}
 
 	if !h.productPolicy.CanUpdate(authUser, productId) {
-		return errors.NewUnAuthorizedError("Unauthorized", "You are not allowed to update the product", nil)
+		return errors.NewUnAuthorizedError("", "You are not allowed to update the product", nil)
 	}
 
-	valid, validErrorsList := validate.ValidateRequest(&req)
-	if !valid {
-		return errors.NewValidationError(validErrorsList)
+	if err = deps.Validator().ValidateRequest(&req); err != nil {
+		return err
 	}
 
-	product, err := h.productService.UpdateProduct(productId, &req)
+	product, err := h.productService.UpdateProduct(gin.Request.Context(), productId, &req)
 	if err != nil {
-		if notfoundErr, ok := errors.AsNotFoundError(err); ok {
-			return notfoundErr
-		}
-
-		return errors.NewServerError("Failed to update product", "Failed to update product", err)
+		return err
 	}
 
-	response.Json(c, "Product updated successfully", map[string]any{
-		"product": map[string]any{
-			"id":         product.ID,
-			"name":       product.Name,
-			"price":      product.Price,
-			"sku":        product.SKU,
-			"brand":      product.Brand,
-			"created_at": product.CreatedAt,
-			"updated_at": product.UpdatedAt,
-		},
-	}, 201)
-
+	responses.SendUpdateProductResponse(gin, product)
 	return nil
 }
 

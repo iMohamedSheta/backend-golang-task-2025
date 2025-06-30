@@ -2,7 +2,7 @@ package utils
 
 import (
 	"fmt"
-	"taskgo/pkg/enums"
+	"taskgo/internal/enums"
 )
 
 /*

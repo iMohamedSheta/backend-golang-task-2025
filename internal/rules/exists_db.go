@@ -2,19 +2,19 @@ package rules
 
 import (
 	"strings"
-	"taskgo/pkg/database"
-	"taskgo/pkg/logger"
+	"taskgo/internal/deps"
 
 	"github.com/go-playground/validator/v10"
 )
 
-// ExistsDB checks if a given column in a given table exists in the database example: "exists_db:table-column"
+// ExistsDB checks if a given column in a given table exists in the database example: "exists_db=table-column"
 func ExistsDB(fl validator.FieldLevel) bool {
-	db := database.GetDB()
+	db := deps.Gorm().DB
+	log := deps.Log().Log()
 	param := fl.Param() // expected format: "table-column"
 	parts := strings.Split(param, "-")
 	if len(parts) != 2 {
-		logger.Log().Error("Invalid unique validator format, expected: table-column")
+		log.Error("Invalid unique validator format, expected: table-column")
 		return false
 	}
 
@@ -27,7 +27,7 @@ func ExistsDB(fl validator.FieldLevel) bool {
 	var count int64
 	err := db.Table(tableName).Where(columnName+" = ?", fl.Field().String()).Count(&count).Error
 	if err != nil {
-		logger.Log().Error("Error while checking unique constraint: " + err.Error())
+		log.Error("Error while checking unique constraint: " + err.Error())
 		return false
 	}
 

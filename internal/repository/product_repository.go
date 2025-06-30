@@ -3,20 +3,19 @@ package repository
 import (
 	"errors"
 	"taskgo/internal/database/models"
+	"taskgo/internal/deps"
 	"taskgo/internal/enums"
 	"taskgo/internal/filters"
-	"taskgo/pkg/database"
 	"taskgo/pkg/utils"
 
 	"gorm.io/gorm"
 )
 
 type ProductRepository struct {
-	db *gorm.DB
+	db *deps.GormDB
 }
 
-func NewProductRepository() *ProductRepository {
-	db := database.GetDB()
+func NewProductRepository(db *deps.GormDB) *ProductRepository {
 	return &ProductRepository{
 		db: db,
 	}
@@ -24,7 +23,7 @@ func NewProductRepository() *ProductRepository {
 
 // Create a new product
 func (r *ProductRepository) Create(product *models.Product) error {
-	return r.db.Create(product).Error
+	return r.db.DB.Create(product).Error
 }
 
 // Update a product by id
@@ -33,7 +32,7 @@ func (r *ProductRepository) UpdateById(id string, data map[string]interface{}) e
 		return errors.New("id is required")
 	}
 
-	if err := r.db.Model(&models.Product{}).Where("id = ?", id).Updates(data).Error; err != nil {
+	if err := r.db.DB.Model(&models.Product{}).Where("id = ?", id).Updates(data).Error; err != nil {
 		return err
 	}
 
@@ -49,7 +48,7 @@ func (r *ProductRepository) UpdateByIdAndGet(id string, data map[string]interfac
 
 	// Fetch the updated user to return the latest state
 	var product models.Product
-	if err := r.db.Where("id = ?", id).First(&product).Error; err != nil {
+	if err := r.db.DB.Where("id = ?", id).First(&product).Error; err != nil {
 		return nil, err
 	}
 
@@ -63,7 +62,7 @@ func (r *ProductRepository) FindById(id string) (*models.Product, error) {
 	}
 
 	product := models.Product{}
-	if err := r.db.Where("id = ?", id).First(&product).Error; err != nil {
+	if err := r.db.DB.Where("id = ?", id).First(&product).Error; err != nil {
 		return nil, err
 	}
 
@@ -77,7 +76,7 @@ func (r *ProductRepository) CheckIDsExist(ids []uint) ([]uint, error) {
 	}
 
 	var existingIDs []uint
-	err := r.db.Model(&models.Product{}).
+	err := r.db.DB.Model(&models.Product{}).
 		Where("id IN ?", ids).
 		Pluck("id", &existingIDs).Error
 
@@ -104,7 +103,7 @@ func (r *ProductRepository) CheckIDsExist(ids []uint) ([]uint, error) {
 // Get a list of products by list of ids
 func (r *ProductRepository) FindByIDs(ids []uint) ([]models.Product, error) {
 	var products []models.Product
-	err := r.db.Where("id IN ?", ids).Find(&products).Error
+	err := r.db.DB.Where("id IN ?", ids).Find(&products).Error
 	return products, err
 }
 
@@ -149,7 +148,7 @@ func (r *ProductRepository) FindByIDsWithInventory(ids []uint, inventoryColumns 
 		}
 	}
 
-	err := r.db.
+	err := r.db.DB.
 		Preload("Inventory", func(db *gorm.DB) *gorm.DB {
 			return db.Select(filtered)
 		}).
@@ -164,7 +163,7 @@ func (r *ProductRepository) Paginate(productFilters *filters.ProductFilters) ([]
 	var products []*models.Product
 	var total int64
 
-	db := r.db.Model(&models.Product{})
+	db := r.db.DB.Model(&models.Product{})
 
 	db = r.applyFilters(db, productFilters)
 

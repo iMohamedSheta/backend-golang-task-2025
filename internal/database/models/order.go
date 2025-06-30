@@ -61,3 +61,10 @@ func (o *Order) GenerateTrackingNumber(prefix string) string {
 	}
 	return strings.ToUpper(fmt.Sprintf("%s_%s", prefix, uuid.New().String()[:8]))
 }
+
+func (order *Order) CalculateTotalAmount() {
+	order.TotalAmount = 0
+	for _, orderItem := range order.OrderItems {
+		order.TotalAmount += orderItem.TotalPrice
+	}
+}

@@ -4,26 +4,29 @@ import (
 	"log"
 	"os"
 	"taskgo/bootstrap"
-	"taskgo/internal/config"
 	"taskgo/internal/database/migration"
 	"taskgo/internal/database/seeders"
-	"taskgo/pkg/database"
+	"taskgo/internal/deps"
 	"taskgo/pkg/enums"
 )
 
 func main() {
-	// Load application parts (configurations, DB connection, logger, router, validator, etc..)
-	// can be updated to just connect to database and run migrations
-	bootstrap.Load()
+	// Load application parts for migrations to work
+	bootstrap.NewAppBuilder(".env").
+		LoadConfig().
+		LoadLogger().
+		LoadDatabase().
+		Boot()
 
 	var err error
+	gormDB := deps.Gorm().DB
 	if len(os.Args) > 1 && os.Args[1] == "rollback" {
-		if config.App.GetString("app.env", "prod") == "prod" {
+		if deps.Config().GetString("app.env", "prod") == "prod" {
 			log.Fatal(enums.Red.Value() + "Rollback is not allowed in production environment" + enums.Reset.Value())
 			return
 		}
 		// Rollback database migrations
-		err = migration.RollbackMigrations(database.GetDB())
+		err = migration.RollbackMigrations(gormDB)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -31,7 +34,7 @@ func main() {
 	}
 
 	// Run database migrations
-	err = migration.RunMigrations(database.GetDB())
+	err = migration.RunMigrations(gormDB)
 
 	if err != nil {
 		log.Fatal(err)

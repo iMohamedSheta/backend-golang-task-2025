@@ -15,18 +15,47 @@ type Config struct {
 
 // Contain all the loaded function to load configurations
 var (
-	loaders   []func()
-	loadersMu sync.RWMutex
+	globalLoaders []func(cfg *Config)
+	loadersMu     sync.RWMutex
 )
 
-// Global app config instance
-var App = &Config{store: make(map[string]any)}
+func New() *Config {
+	return &Config{
+		store: make(map[string]any),
+	}
+}
 
 // Set a configuration value
 func (c *Config) Set(key string, value any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.store[key] = value
+
+	keys := strings.Split(key, ".")
+	lastIndex := len(keys) - 1
+	current := c.store
+
+	for i, k := range keys {
+		if i == lastIndex {
+			current[k] = value
+			return
+		}
+
+		// If the key doesn't exist or isn't a map, create a new nested map
+		if next, ok := current[k]; ok {
+			if m, ok := next.(map[string]any); ok {
+				current = m
+			} else {
+				// If not a map, overwrite with new map
+				newMap := make(map[string]any)
+				current[k] = newMap
+				current = newMap
+			}
+		} else {
+			newMap := make(map[string]any)
+			current[k] = newMap
+			current = newMap
+		}
+	}
 }
 
 // Get a configuration value - returns error instead of panicking
@@ -89,6 +118,17 @@ func (c *Config) GetBool(key string, defaultVal bool) bool {
 	return defaultVal
 }
 
+func (c *Config) GetMap(key string, defaultVal map[string]any) map[string]any {
+	val, err := c.Get(key)
+	if err != nil {
+		return defaultVal
+	}
+	if m, ok := val.(map[string]any); ok {
+		return m
+	}
+	return defaultVal
+}
+
 func (c *Config) GetArrayOfStrings(key string, defaultVal []string) []string {
 	val, err := c.Get(key)
 	if err != nil {
@@ -135,18 +175,16 @@ func Env(key string, defaultValue any) any {
 	return nil
 }
 
-// Register new function to load config set
-func Register(loader func()) {
+func Register(loader func(cfg *Config)) {
 	loadersMu.Lock()
 	defer loadersMu.Unlock()
-	loaders = append(loaders, loader)
+	globalLoaders = append(globalLoaders, loader)
 }
 
-// Load all the registered function config loaders
-func LoadAll() {
+func ApplyRegisteredLoaders(cfg *Config) {
 	loadersMu.RLock()
 	defer loadersMu.RUnlock()
-	for _, load := range loaders {
-		load()
+	for _, loader := range globalLoaders {
+		loader(cfg)
 	}
 }

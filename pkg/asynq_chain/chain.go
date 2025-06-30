@@ -1,11 +1,11 @@
-package tasks
+package chainq
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
-	"taskgo/pkg/logger"
+	"taskgo/internal/deps"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,7 +18,7 @@ import (
 |  Chain Orchestrator Workflow
 |  (just a normal task but dispatch the next task until last one)
 |------------------------------------------
-|	1- Create chain of tasks as example
+|	1- Create chain of tasks as example shown
 |	2- Dispatch chain (it will dispatch task (TypeChainOrchestrator"chain:orchestrator"))
 |	3- This task will have all the tasks types register in the bootstrap/registers.go as handlers
 |	4- and when the asynq worker (consumer/server) will call the ChainOrchestratorTask the processTask will be called
@@ -44,34 +44,74 @@ import (
 |------------------------------------------
 */
 
-// ChainableTask interface that all tasks must implement
-type ChainableTask interface {
+const (
+	TypeChainOrchestrator = "chain:orchestrator" // Chain orchestrator type
+)
+
+// Task interface that all tasks must implement
+type Task interface {
+	CreateTask() (*asynq.Task, error)
 	GetTaskType() string
 	GetPayload() any
-	CreateTask() (*asynq.Task, error)
+}
+
+type Logger interface {
+	Info(msg string, fields ...any)
+	Error(msg string, fields ...any)
+	Warn(msg string, fields ...any)
 }
 
 type Chain struct {
-	tasks      []ChainableTask
+	client     *asynq.Client
+	tasks      []Task
 	onSuccess  func(any) error
 	onFailure  func(error) error
 	maxRetries int
 	timeout    time.Duration
 	queue      string
+	logger     Logger
+}
+
+type ChainOptions struct {
+	MaxRetries   int
+	Timeout      time.Duration
+	DefaultQueue string
 }
 
 // NewChain creates a new task chain
-func NewChain() *Chain {
+func NewChain(client *asynq.Client, logger Logger, opt *ChainOptions) *Chain {
+	defaultOpt := &ChainOptions{
+		MaxRetries:   3,
+		Timeout:      5 * time.Minute,
+		DefaultQueue: "default",
+	}
+
+	if opt == nil {
+		opt = defaultOpt
+	} else {
+		if opt.DefaultQueue == "" {
+			opt.DefaultQueue = defaultOpt.DefaultQueue
+		}
+		if opt.Timeout == 0 {
+			opt.Timeout = defaultOpt.Timeout
+		}
+		if opt.MaxRetries == 0 {
+			opt.MaxRetries = defaultOpt.MaxRetries
+		}
+	}
+
 	return &Chain{
-		tasks:      make([]ChainableTask, 0),
-		maxRetries: 3,
-		timeout:    5 * time.Minute,
-		queue:      "default",
+		tasks:      make([]Task, 0),
+		client:     client,
+		logger:     logger,
+		maxRetries: opt.MaxRetries,
+		timeout:    opt.Timeout,
+		queue:      opt.DefaultQueue,
 	}
 }
 
 // Then adds a task to the chain
-func (c *Chain) Then(task ChainableTask) *Chain {
+func (c *Chain) Then(task Task) *Chain {
 	c.tasks = append(c.tasks, task)
 	return c
 }
@@ -132,14 +172,14 @@ func (c *Chain) Dispatch() error {
 		asynq.Timeout(c.timeout),
 		asynq.Queue(c.queue),
 	)
-
-	err = Dispatch(task) // Dispatch the orchestrator task
+	err = dispatchAsynqTask(c.client, c.logger, task) // Dispatch the orchestrator task
+	log := deps.Log().Channel("queue_log")
 	if err != nil {
-		logger.Channel("queue_log").Error("Failed to dispatch chain", zap.Error(err))
+		log.Error("Failed to dispatch chain", zap.Error(err))
 		return err
 	}
 
-	logger.Channel("queue_log").Info("Chain dispatched successfully",
+	log.Info("Chain dispatched successfully",
 		zap.String("chain_id", chainPayload.ChainID),
 		zap.Int("task_count", len(c.tasks)),
 	)
@@ -162,7 +202,7 @@ type SerializedTask struct {
 	Payload interface{} `json:"payload"`
 }
 
-// serializeTasks converts ChainableTask to SerializedTask so it can be stored inside the ChainPayload
+// serializeTasks converts Task to SerializedTask so it can be stored inside the ChainPayload
 func (c *Chain) serializeTasks() []SerializedTask {
 	serialized := make([]SerializedTask, len(c.tasks))
 	for i, task := range c.tasks {
@@ -183,11 +223,15 @@ func generateChainID() string {
 // ChainOrchestrator handles the execution of chained tasks
 type ChainOrchestrator struct {
 	handlers map[string]asynq.Handler // Map of task type to handler
+	client   *asynq.Client
+	logger   Logger
 }
 
-func NewChainOrchestrator() *ChainOrchestrator {
+func NewChainOrchestrator(client *asynq.Client, logger Logger) *ChainOrchestrator {
 	return &ChainOrchestrator{
 		handlers: make(map[string]asynq.Handler),
+		client:   client,
+		logger:   logger,
 	}
 }
 
@@ -203,7 +247,8 @@ func (co *ChainOrchestrator) ProcessTask(ctx context.Context, t *asynq.Task) err
 		return fmt.Errorf("failed to unmarshal chain payload: %w", err)
 	}
 
-	logger.Channel("queue_log").Info("Processing chain step",
+	log := deps.Log().Channel("queue_log")
+	log.Info("Processing chain step",
 		zap.String("chain_id", payload.ChainID),
 		zap.Int("step", payload.CurrentStep+1),
 		zap.Int("total", len(payload.Tasks)),
@@ -211,7 +256,7 @@ func (co *ChainOrchestrator) ProcessTask(ctx context.Context, t *asynq.Task) err
 
 	// Check if we've completed all tasks
 	if payload.CurrentStep >= len(payload.Tasks) {
-		logger.Channel("queue_log").Info("Chain completed successfully",
+		log.Info("Chain completed successfully",
 			zap.String("chain_id", payload.ChainID),
 		)
 		return nil
@@ -236,7 +281,7 @@ func (co *ChainOrchestrator) ProcessTask(ctx context.Context, t *asynq.Task) err
 
 	// Execute the current task
 	if err := handler.ProcessTask(ctx, task); err != nil {
-		logger.Channel("queue_log").Error("Chain task failed",
+		log.Error("Chain task failed",
 			zap.String("chain_id", payload.ChainID),
 			zap.String("task_type", currentTask.Type),
 			zap.Int("step", payload.CurrentStep+1),
@@ -255,7 +300,7 @@ func (co *ChainOrchestrator) ProcessTask(ctx context.Context, t *asynq.Task) err
 	}
 
 	// Chain completed
-	logger.Channel("queue_log").Info("Chain completed successfully",
+	log.Info("Chain completed successfully",
 		zap.String("chain_id", payload.ChainID),
 	)
 	return nil
@@ -275,5 +320,21 @@ func (co *ChainOrchestrator) dispatchNextStep(payload ChainPayload) error {
 		asynq.ProcessIn(1*time.Second), // delay between steps
 	)
 
-	return Dispatch(task)
+	return dispatchAsynqTask(co.client, co.logger, task)
+}
+
+func dispatchAsynqTask(client *asynq.Client, log Logger, task *asynq.Task, opts ...asynq.Option) error {
+	if client == nil {
+		log.Error("asynq client not initialized")
+		return fmt.Errorf("asynq client not initialized")
+	}
+
+	info, err := client.Enqueue(task, opts...)
+	if err != nil {
+		log.Error(fmt.Sprintf("failed to enqueue task: %v", err))
+		return fmt.Errorf("failed to enqueue task: %w", err)
+	}
+
+	log.Info(fmt.Sprintf("Task enqueued: ID=%s, Queue=%s, Type=%s", info.ID, info.Queue, info.Type))
+	return nil
 }

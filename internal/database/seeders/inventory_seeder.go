@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"log"
 	"taskgo/internal/database/models"
-	"taskgo/pkg/database"
+	"taskgo/internal/deps"
 	pkgEnums "taskgo/pkg/enums"
 	"time"
 )
 
 func SeedInventory() {
-	db := database.GetDB()
+	db := deps.Gorm().DB
 
 	var products []models.Product
 	if err := db.Find(&products).Error; err != nil {

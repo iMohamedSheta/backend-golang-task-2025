@@ -3,13 +3,22 @@ package validate
 import (
 	"fmt"
 	"taskgo/pkg/contracts"
-	"unicode"
+	"taskgo/pkg/errors"
+	"taskgo/pkg/reflect"
 
 	"github.com/go-playground/validator/v10"
 )
 
-func Validate(data map[string]interface{}, rules map[string]string, messages map[string]string) (bool, map[string]string) {
-	validate := Validator()
+type Validator struct {
+	validate *validator.Validate
+}
+
+func New(v *validator.Validate) *Validator {
+	return &Validator{validate: v}
+}
+
+func (v *Validator) Validate(data map[string]interface{}, rules map[string]string, messages map[string]string) (bool, map[string]string) {
+	validate := v.validate
 	errors := make(map[string]string)
 
 	for field, rule := range rules {
@@ -35,40 +44,54 @@ func Validate(data map[string]interface{}, rules map[string]string, messages map
 	return len(errors) == 0, errors
 }
 
-func ValidateRequest(r contracts.Validatable) (bool, map[string]any) {
-	validate := Validator()
+func (v *Validator) validateRequest(r contracts.Validatable) (bool, map[string]any, error) {
+	validate := v.validate
 
 	if err := validate.Struct(r); err != nil {
+		// Check if the the type of err is not a validationErrors type then return it as serverError (InvalidValidationError)
+		validationErrors, ok := err.(validator.ValidationErrors)
+		if !ok {
+			return false, nil, err
+		}
+
 		errors := make(map[string]any)
 		messages := r.Messages()
 
-		for _, valErr := range err.(validator.ValidationErrors) {
-			// Use the JSON tag name instead of struct field name
-			fieldName := valErr.Field()
-			if jsonTag := valErr.Field(); jsonTag != "" {
-				fieldName = toSnakeCase(valErr.Field())
+		for _, valErr := range validationErrors {
+			// Get the actual JSON tag name from the struct field
+			fieldName := reflect.GetJsonFieldName(r, valErr.Field())
+
+			// Skip fields that are excluded from JSON (json:"-")
+			if fieldName == "" {
+				continue
 			}
 
+			// Create the message key
 			key := fmt.Sprintf("%s.%s", fieldName, valErr.Tag())
+
+			// Use custom message if available, otherwise use default error
 			if msg, ok := messages[key]; ok {
 				errors[fieldName] = msg
 			} else {
 				errors[fieldName] = valErr.Error()
 			}
 		}
-		return false, errors
+		return false, errors, nil
 	}
 
-	return true, nil
+	return true, nil, nil
 }
 
-func toSnakeCase(str string) string {
-	var result []rune
-	for i, r := range str {
-		if unicode.IsUpper(r) && i != 0 {
-			result = append(result, '_')
-		}
-		result = append(result, unicode.ToLower(r))
+// ValidateRequest validates the request and returns an error if it fails.
+func (v *Validator) ValidateRequest(req contracts.Validatable) error {
+	valid, validationErrors, err := v.validateRequest(req)
+	if err != nil {
+		return errors.NewServerError("", "Internal server error: validation fail to process for the login.", err)
 	}
-	return string(result)
+
+	if !valid {
+		return errors.NewValidationError(validationErrors)
+	}
+
+	return nil
 }

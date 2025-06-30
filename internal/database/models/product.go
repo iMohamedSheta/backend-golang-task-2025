@@ -6,14 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"taskgo/internal/deps"
 	"taskgo/internal/enums"
-	"taskgo/pkg/database"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
-type ProductAttributes map[string]interface{}
+type ProductAttributes map[string]any
 
 // Value implements the driver.Valuer interface for ProductAttributes
 func (a ProductAttributes) Value() (driver.Value, error) {
@@ -21,7 +21,7 @@ func (a ProductAttributes) Value() (driver.Value, error) {
 }
 
 // Scan implements the sql.Scanner interface for ProductAttributes
-func (a *ProductAttributes) Scan(value interface{}) error {
+func (a *ProductAttributes) Scan(value any) error {
 	bytes, ok := value.([]byte)
 	if !ok {
 		return errors.New("type assertion to []byte failed")
@@ -41,31 +41,14 @@ type Product struct {
 	Brand       string              `gorm:"index" json:"brand"`    // index
 	Weight      float64             `gorm:"type:decimal(10,2)" json:"weight"`
 	WeightUnit  string              `gorm:"size:10" json:"weight_unit"`
-	Inventory   Inventory           `gorm:"foreignKey:ProductID" json:"inventory"` // relationship product (1) to inventory (m)
+	Inventories []Inventory         `gorm:"foreignKey:ProductID" json:"inventory"` // relationship product (1) to inventory (m)
 }
 
-func (p *Product) LoadInventory() error {
-	db := database.GetDB()
-	return db.Model(p).Association("Inventory").Find(&p.Inventory)
+func (p *Product) LoadInventories() error {
+	return deps.Gorm().DB.Model(p).Association("Inventories").Find(&p.Inventories)
 }
 
-func (p *Product) LoadInventoryIfInventoryIDNotExists() error {
-	db := database.GetDB()
-	if p.Inventory.ID != 0 {
-		return nil
-	}
-	return db.Model(p).Association("Inventory").Find(&p.Inventory)
-}
-
-func (p *Product) GetInventoryCacheKey() (string, error) {
-	err := p.LoadInventoryIfInventoryIDNotExists()
-	if err != nil {
-		return "", err
-	}
-	return p.Inventory.GetInventoryCacheKey(), nil
-}
-
-// GenerateSKU generates a unique SKU for the product
+// GenerateSKU generates a unique SKU for the product/
 func (p *Product) GenerateSKU(prefix string) string {
 	if prefix == "" {
 		prefix = "SKU"
@@ -81,4 +64,16 @@ func (p *Product) BeforeCreate(tx *gorm.DB) error {
 	}
 	p.SKU = p.GenerateSKU("SKU")
 	return nil
+}
+
+func (p *Product) GetInventoryCacheKeyForAuthUser(authUserID uint) string {
+	// Should do actual logic to get the inventory cache key based on the auth user location or other logic
+	// But i will just get first inventory for now
+	var firstInventory Inventory
+	deps.Gorm().DB.Model(&Inventory{}).
+		Where("product_id = ?", p.ID).
+		Select("id, product_id, quantity").
+		First(&firstInventory)
+
+	return firstInventory.GetInventoryCacheKey()
 }

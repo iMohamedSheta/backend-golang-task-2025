@@ -4,8 +4,8 @@ func init() {
 	Register(cacheConfig)
 }
 
-func cacheConfig() {
-	App.Set("cache", map[string]any{
+func cacheConfig(cfg *Config) {
+	cfg.Set("cache", map[string]any{
 		"default": "redis",
 		"stores": map[string]any{
 			"redis": map[string]any{

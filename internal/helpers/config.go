@@ -1,17 +1,16 @@
 package helpers
 
 import (
-	"fmt"
-	"taskgo/internal/config"
-	"taskgo/pkg/logger"
+	"taskgo/internal/deps"
+	"taskgo/pkg/errors"
 )
 
 // GetAppSecret returns the app secret from the configuration
 func GetAppSecret() ([]byte, error) {
-	secret := config.App.GetString("app.secret", "")
+	secret := deps.Config().GetString("app.secret", "")
 	if secret == "" {
-		logger.Log().Error("Missing or invalid app secret in configuration")
-		return nil, fmt.Errorf("missing or invalid app secret in configuration")
+		deps.Log().Log().Error("Missing or invalid app secret in configuration")
+		return nil, errors.NewServerError("internal server error", "internal server error: Missing or invalid app secret in configuration", nil)
 	}
 
 	return []byte(secret), nil

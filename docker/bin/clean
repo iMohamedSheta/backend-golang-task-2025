@@ -1,0 +1,23 @@
+#!/bin/bash
+
+echo "🛑 Stopping all containers..."
+docker stop $(docker ps -aq)
+
+echo "🗑️ Removing all containers..."
+docker rm $(docker ps -aq)
+
+echo "🌐 Pruning networks..."
+docker network prune -f
+
+echo "🪣 Pruning volumes..."
+docker volume prune -f
+
+echo "✅ Cleanup complete."
+
+echo  "🔥 Removing unused images..."
+docker image prune -a 
+
+echo  "🪣 Pruning unused volumes..."
+docker system prune -a --volumes
+
+docker builder prune -a 

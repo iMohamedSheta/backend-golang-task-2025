@@ -3,7 +3,7 @@ package middleware
 import (
 	"time"
 
-	"taskgo/pkg/logger"
+	"taskgo/internal/deps"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -40,7 +40,7 @@ func Logger() gin.HandlerFunc {
 		errorMessage := c.Errors.ByType(gin.ErrorTypePrivate).String()
 		errorCount := len(c.Errors)
 
-		log := logger.Channel("request_log").With(
+		log := deps.Log().Channel("request_log").With(
 			zap.Int("status", status),
 			zap.String("latency", latency.String()),
 			zap.String("client_ip", clientIP),

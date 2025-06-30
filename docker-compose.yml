@@ -1,0 +1,66 @@
+services:
+  app:
+    build: .
+    container_name: golang-app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: db
+      REDIS_HOST: redis
+    volumes:
+      - ./docker/storage/logs:/app/storage/logs
+
+  migrate:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["./docker/bin/wait_for", "db:5432", "--", "./migrate"]
+    restart: "no"
+
+  worker:
+    build: .
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: ["./docker/bin/wait_for", "redis:6379", "--", "./worker"]
+
+  db:
+    image: postgres:16
+    container_name: postgres-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: taskgo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d taskgo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7
+    container_name: redis-cache
+    ports:
+      - "6378:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  pgdata:

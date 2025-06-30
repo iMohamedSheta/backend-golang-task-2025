@@ -7,8 +7,8 @@ func init() {
 }
 
 // authConfig sets the authentication configuration for the application.
-func authConfig() {
-	App.Set("auth", map[string]any{
+func authConfig(cfg *Config) {
+	cfg.Set("auth", map[string]any{
 		"default": "jwt",
 		"jwt": map[string]any{
 			"secret":    "secret",

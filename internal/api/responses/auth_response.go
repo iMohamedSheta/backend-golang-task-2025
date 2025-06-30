@@ -31,7 +31,8 @@ type LoginResponse struct {
 }
 
 // return login successful response
-func (r *LoginResponse) Response(c *gin.Context, user *models.User, accessToken string, refreshToken string) {
+func SendLoginResponse(gin *gin.Context, user *models.User, accessToken string, refreshToken string) {
+	r := &LoginResponse{}
 	// message
 	r.Message = "User logged in successfully"
 	// tokens
@@ -50,5 +51,20 @@ func (r *LoginResponse) Response(c *gin.Context, user *models.User, accessToken 
 	r.Data.User.CreatedAt = user.CreatedAt
 	r.Data.User.UpdatedAt = user.UpdatedAt
 
-	response.Json(c, r.Message, r.Data, 200)
+	response.Json(gin, r.Message, r.Data, 200)
+}
+
+type RefreshAccessTokenResponse struct {
+	Message string `json:"message" example:"Access token refreshed successfully"`
+	Data    struct {
+		AccessToken string `json:"access_token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
+	} `json:"data"`
+}
+
+// return refresh successful response
+func SendRefreshAccessTokenResponse(gin *gin.Context, accessToken string) {
+	r := &RefreshAccessTokenResponse{}
+	r.Message = "Access token refreshed successfully"
+	r.Data.AccessToken = accessToken
+	response.Json(gin, r.Message, r.Data, 200)
 }

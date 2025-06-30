@@ -2,149 +2,151 @@ package handlers
 
 import (
 	"taskgo/internal/api/requests"
+	"taskgo/internal/api/responses"
+	"taskgo/internal/database/models"
+	"taskgo/internal/deps"
 	"taskgo/internal/helpers"
 	"taskgo/internal/policies"
-	"taskgo/internal/repository"
 	"taskgo/internal/services"
 	"taskgo/pkg/errors"
-	"taskgo/pkg/response"
-	"taskgo/pkg/utils"
-	"taskgo/pkg/validate"
 
 	"github.com/gin-gonic/gin"
 )
 
 type UserHandler struct {
+	Handler
 	userService *services.UserService
 	userPolicy  *policies.UserPolicy
 }
 
-func NewUserHandler() *UserHandler {
-	userRepo := repository.NewUserRepository()
+// NewUserHandler return a new UserHandler
+func NewUserHandler(userService *services.UserService, userPolicy *policies.UserPolicy) *UserHandler {
 	return &UserHandler{
-		userService: services.NewUserService(userRepo),
-		userPolicy:  &policies.UserPolicy{},
+		userService: userService,
+		userPolicy:  userPolicy,
 	}
 }
 
-// Create a new customer (register)
-func (h *UserHandler) CreateUser(c *gin.Context) error {
+// @Summary     Create a new user
+// @Description Creates a new user with the provided information.
+// @Tags        Users
+// @Accept      json
+// @Produce     json
+//
+// @Param       request  body      requests.CreateUserRequest     true  "Create user request body"
+//
+// @Success     201      {object}  responses.CreateUserResponse    "User created successfully"
+// @Failure     400      {object}  response.BadRequestResponse     "Bad Request"
+// @Failure     401      {object}  response.UnauthorizedResponse   "Unauthorized Action"
+// @Failure     422      {object}  response.ValidationErrorResponse "Validation Error"
+// @Failure     500      {object}  response.ServerErrorResponse    "Internal Server Error"
+//
+// @Router      /users [post]
+func (h *UserHandler) CreateUser(gin *gin.Context) error {
 	var req requests.CreateUserRequest
+	var err error
 
-	// Policy check
+	if err = h.BindBodyAndExtractToRequest(gin, &req); err != nil {
+		return errors.NewBadRequestError("", "BadRequestError: Failed to bind request body to request object", err)
+	}
+
 	if !h.userPolicy.CanCreate(nil) {
 		return errors.NewUnAuthorizedError("Unauthorized", "You are not allowed to view this user", nil)
 	}
 
-	if err := utils.BindToRequestAndExtractFields(c, &req); err != nil {
-		return errors.NewBadRequestError("", "BadRequestError: Failed to bind request body to request object", err)
+	if err = deps.Validator().ValidateRequest(&req); err != nil {
+		return err
 	}
 
-	valid, validErrorsList := validate.ValidateRequest(&req)
-	if !valid {
-		return errors.NewValidationError(validErrorsList)
-	}
-
-	_, err := h.userService.CreateUser(&req)
-
+	var user *models.User
+	user, err = h.userService.CreateUser(gin, &req)
 	if err != nil {
-		// Check if it's a custom server error (with public message)
-		if serverErr, ok := errors.AsServerError(err); ok {
-			return serverErr
-		}
-
-		return errors.NewServerError("Failed to create the user", "Failed to create the user", err)
+		return err
 	}
 
-	response.Json(c, "User created successfully", nil, 201)
-
+	responses.SendCreateUserResponse(gin, user)
 	return nil
 }
 
-// Get user details by ID
-func (h *UserHandler) GetUser(c *gin.Context) error {
-	userId := c.Param("id")
-	// Get auth user
-	authUser, authorizeErr := helpers.GetAuthUser(c)
+// @Summary     Get user by ID
+// @Description Retrieves user details by their ID.
+// @Tags        Users
+// @Accept      json
+// @Produce     json
+//
+// @Param       id       path      string                         true  "User ID"
+//
+// @Success     200      {object}  responses.GetUserResponse      "User retrieved successfully"
+// @Failure     400      {object}  response.BadRequestResponse     "Bad Request"
+// @Failure     401      {object}  response.UnauthorizedResponse   "Unauthorized Action"
+// @Failure     404      {object}  response.NotFoundResponse       "User Not Found"
+// @Failure     500      {object}  response.ServerErrorResponse    "Internal Server Error"
+//
+// @Router      /users/{id} [get]
+func (h *UserHandler) GetUser(gin *gin.Context) error {
+	userId := gin.Param("id")
+	authUser, authorizeErr := helpers.GetAuthUser(gin)
 	if authorizeErr != nil {
 		return authorizeErr
 	}
 
-	// Policy check
 	if !h.userPolicy.CanView(authUser, userId) {
 		return errors.NewUnAuthorizedError("Unauthorized", "You are not allowed to view this user", nil)
 	}
 
-	// Get target user
-	targetUser, err := h.userService.GetUserById(userId)
+	targetUser, err := h.userService.GetUserById(gin.Request.Context(), userId)
 	if err != nil {
-		if notFoundErr, ok := errors.AsNotFoundError(err); ok {
-			return notFoundErr
-		}
-
-		return errors.NewServerError("", "Internal Server Error: Failed to get the user by id using UserService", err)
+		return err
 	}
 
-	// Example response
-	response.Json(c, "User details retrieved successfully", map[string]any{
-		"user": map[string]any{
-			"id":         targetUser.ID,
-			"first_name": targetUser.FirstName,
-			"last_name":  targetUser.LastName,
-			"email":      targetUser.Email,
-			"created_at": targetUser.CreatedAt,
-			"updated_at": targetUser.UpdatedAt,
-		},
-	}, 200)
-
+	responses.SendGetUserResponse(gin, targetUser)
 	return nil
 }
 
-// Update user details by ID
-func (h *UserHandler) UpdateUser(c *gin.Context) error {
+// @Summary     Update user by ID
+// @Description Updates an existing user with the provided ID and request body.
+// @Tags        Users
+// @Accept      json
+// @Produce     json
+//
+// @Param       id       path      string                         true  "User ID"
+// @Param       request  body      requests.UpdateUserRequest     true  "Update user request body"
+//
+// @Success     200      {object}  responses.UpdateUserResponse   "User updated successfully"
+// @Failure     400      {object}  response.BadRequestResponse     "Bad Request"
+// @Failure     401      {object}  response.UnauthorizedResponse   "Unauthorized Action"
+// @Failure     404      {object}  response.NotFoundResponse       "User Not Found"
+// @Failure     422      {object}  response.ValidationErrorResponse "Validation Error"
+// @Failure     500      {object}  response.ServerErrorResponse    "Internal Server Error"
+//
+// @Router      /users/{id} [put]
+func (h *UserHandler) UpdateUser(gin *gin.Context) error {
 	var req requests.UpdateUserRequest
+	var err error
 
-	if err := utils.BindToRequestAndExtractFields(c, &req); err != nil {
+	if err = h.BindBodyAndExtractToRequest(gin, &req); err != nil {
 		return errors.NewBadRequestBindingError("", "Failed to bind request body to UpdateUserRequest", err)
 	}
 
-	userId := c.Param("id")
-	authUser, authorizeErr := helpers.GetAuthUser(c)
+	userId := gin.Param("id")
+	authUser, authorizeErr := helpers.GetAuthUser(gin)
 	if authorizeErr != nil {
 		return authorizeErr
 	}
 
-	// Policy check
 	if !h.userPolicy.CanUpdate(authUser, userId) {
 		return errors.NewUnAuthorizedError("Unauthorized", "You are not allowed to view this user", nil)
 	}
 
-	// Validate request
-	valid, validErrorsList := validate.ValidateRequest(&req)
-	if !valid {
-		return errors.NewValidationError(validErrorsList)
+	if err = deps.Validator().ValidateRequest(&req); err != nil {
+		return err
 	}
 
-	// Update user details
-	targetUser, err := h.userService.UpdateUserAndGet(userId, &req)
+	targetUser, err := h.userService.UpdateUserAndGet(gin.Request.Context(), userId, &req)
 	if err != nil {
-		if notfoundErr, ok := errors.AsNotFoundError(err); ok {
-			return notfoundErr
-		}
-		return errors.NewServerError("", "Failed to update user details", err)
+		return err
 	}
 
-	response.Json(c, "User details updated successfully", map[string]any{
-		"user": map[string]any{
-			"id":         targetUser.ID,
-			"first_name": targetUser.FirstName,
-			"last_name":  targetUser.LastName,
-			"email":      targetUser.Email,
-			"phone":      targetUser.PhoneNumber,
-			"created_at": targetUser.CreatedAt,
-			"updated_at": targetUser.UpdatedAt,
-		},
-	}, 200)
-
+	responses.SendUpdateUserResponse(gin, targetUser)
 	return nil
 }

@@ -3,9 +3,9 @@ package middleware
 import (
 	"runtime"
 	"strings"
+	"taskgo/internal/deps"
 	"taskgo/internal/enums"
 	"taskgo/pkg/errors"
-	"taskgo/pkg/logger"
 	"taskgo/pkg/response"
 	"time"
 
@@ -123,8 +123,10 @@ func appRequestErrorLogger(c *gin.Context, err error) {
 		userID = "anonymous"
 	}
 
+	log := deps.Log()
+
 	// Log comprehensive error information
-	logger.Log().Error("Request error occurred",
+	log.Log().Error("Request error occurred",
 		// Error
 		zap.String("error", err.Error()),
 		zap.String("error_type", getErrorType(err)),
@@ -164,7 +166,7 @@ func appRequestErrorLogger(c *gin.Context, err error) {
 		for _, param := range c.Params {
 			params[param.Key] = param.Value
 		}
-		logger.Log().Info("Request parameters",
+		log.Log().Info("Request parameters",
 			zap.Any("params", params),
 			zap.String("request_id", requestID),
 		)
@@ -172,7 +174,7 @@ func appRequestErrorLogger(c *gin.Context, err error) {
 
 	// Log query parameters if they exist
 	if len(c.Request.URL.Query()) > 0 {
-		logger.Log().Info("Query parameters",
+		log.Log().Info("Query parameters",
 			zap.Any("query_params", sanitizeQueryParams(c.Request.URL.Query())),
 			zap.String("request_id", requestID),
 		)

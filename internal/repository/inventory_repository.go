@@ -2,22 +2,19 @@ package repository
 
 import (
 	"taskgo/internal/database/models"
-	"taskgo/pkg/database"
-
-	"gorm.io/gorm"
+	"taskgo/internal/deps"
 )
 
 type InventoryRepository struct {
-	db *gorm.DB
+	db *deps.GormDB
 }
 
-func NewInventoryRepository() *InventoryRepository {
-	db := database.GetDB()
+func NewInventoryRepository(db *deps.GormDB) *InventoryRepository {
 	return &InventoryRepository{
 		db: db,
 	}
 }
 
 func (r *InventoryRepository) UpdateQuantity(inventoryId uint, quantity int) error {
-	return r.db.Model(&models.Inventory{}).Where("id = ?", inventoryId).Update("quantity", quantity).Error
+	return r.db.DB.Model(&models.Inventory{}).Where("id = ?", inventoryId).Update("quantity", quantity).Error
 }

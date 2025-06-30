@@ -4,8 +4,8 @@ func init() {
 	Register(corsConfig)
 }
 
-func corsConfig() {
-	App.Set("cors", map[string]any{
+func corsConfig(cfg *Config) {
+	cfg.Set("cors", map[string]any{
 		"origin": []string{
 			"*",
 		},

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</head>
+
+<body>
+
+
+
+  <script>
+    var t = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYWRtaW4iLCJ0b2tlbl90eXBlIjoiYWNjZXNzX3Rva2VuIiwiaXNzIjoiVGFza0dvIiwic3ViIjoiMSIsImF1ZCI6WyJUYXNrR28iXSwiZXhwIjoxNzUwOTY0ODU5LCJpYXQiOjE3NTA5NjMwNTl9.aAee3zcHMhXct23u4EQXlfV4hPp0h0WXcjF2cT4Dkw4"
+    var tokenRaw = "Bearer " + t;
+    function base64urlEncode(str) {
+      return btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    }
+
+
+    var token = base64urlEncode(tokenRaw);
+    var ws = new WebSocket("ws://localhost:8080/api/v1/ws/notifications", ["Authorization", token]);
+    ws.onopen = function () {
+      console.log("WebSocket opened");
+      ws.send(JSON.stringify({ type: "subscribe", channel: "user_notifications.1" }));
+
+      setTimeout(function () {
+        ws.send(JSON.stringify({ type: "message", channel: "user_notifications.1", data: "Hello, World!" }));
+      }, 10000);
+    };
+
+    ws.onerror = function (err) {
+      console.error("WebSocket error", err);
+    };
+
+    ws.onmessage = function (event) {
+      console.log(event.data);
+    };
+    ws.onclose = function () {
+      console.log("Connection closed");
+    };
+
+
+  </script>
+</body>
+
+</html>

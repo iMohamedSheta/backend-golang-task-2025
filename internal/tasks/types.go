@@ -1,12 +1,10 @@
 package tasks
 
 const (
-	// Chain orchestrator type
-	TypeChainOrchestrator = "chain:orchestrator"
-
 	// Tasks types
-	TypeProcessPayment = "process:payment"
-	TypeInventoryCheck = "inventory:check"
+	TypeProcessPayment   = "process:payment"
+	TypeInventoryCheck   = "inventory:check"
+	TypeSendNotification = "send:notification"
 )
 
 // Queue names
@@ -16,6 +14,7 @@ const (
 	QueueLow            = "low"
 	QueuePayments       = "payments"
 	QueueInventoryCheck = "inventory_check"
+	QueueNotifications  = "notifications"
 
 	QueueOrderProcessingChain = "order_processing_chain"
 )

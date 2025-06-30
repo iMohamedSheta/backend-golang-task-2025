@@ -2,17 +2,16 @@ package repository
 
 import (
 	"taskgo/internal/database/models"
-	"taskgo/pkg/database"
+	"taskgo/internal/deps"
 
 	"gorm.io/gorm"
 )
 
 type OrderRepository struct {
-	db *gorm.DB
+	db *deps.GormDB
 }
 
-func NewOrderRepository() *OrderRepository {
-	db := database.GetDB()
+func NewOrderRepository(db *deps.GormDB) *OrderRepository {
 	return &OrderRepository{
 		db: db,
 	}
@@ -20,7 +19,7 @@ func NewOrderRepository() *OrderRepository {
 
 // Create a new order with order items
 func (r *OrderRepository) CreateWithOrderItems(order *models.Order, orderItems []*models.OrderItem) error {
-	return r.db.Transaction(func(tx *gorm.DB) error {
+	return r.db.DB.Transaction(func(tx *gorm.DB) error {
 		// Create the order
 		if err := tx.Create(order).Error; err != nil {
 			return err
@@ -41,7 +40,7 @@ func (r *OrderRepository) CreateWithOrderItems(order *models.Order, orderItems [
 
 func (r *OrderRepository) GetOrderWithOrderItems(orderID uint) (*models.Order, error) {
 	var order models.Order
-	if err := r.db.Preload("OrderItems").First(&order, orderID).Error; err != nil {
+	if err := r.db.DB.Preload("OrderItems").First(&order, orderID).Error; err != nil {
 		return nil, err
 	}
 	return &order, nil

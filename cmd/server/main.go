@@ -25,7 +25,16 @@ import (
 
 func main() {
 	// Load application parts (configurations, DB connection, logger, router, validator, etc..)
-	bootstrap.Load()
+	bootstrap.NewAppBuilder(".env").
+		LoadConfig().
+		LoadLogger().
+		LoadDatabase().
+		LoadValidator().
+		LoadRedisCache().
+		LoadRedisQueue().
+		LoadWebsocketServer().
+		LoadNotify().
+		Boot()
 
 	// Start the application (HTTP server)
 	bootstrap.Run()

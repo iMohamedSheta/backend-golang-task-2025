@@ -8,7 +8,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type OrderResponse struct {
+// CreateOrderResponse represent the successful response of creating new order
+type CreateOrderResponse struct {
 	Message string `json:"message" example:"Order created successfully"`
 	Data    struct {
 		Order OrderData `json:"order"`
@@ -45,8 +46,9 @@ type OrderItem struct {
 	Status     string    `json:"status"`
 }
 
-// Return Order response
-func (r *OrderResponse) Response(c *gin.Context, order *models.Order) {
+// Return create order successful response
+func SendCreateOrderResponse(gin *gin.Context, order *models.Order) {
+	r := &CreateOrderResponse{}
 	r.Message = "Order created successfully"
 
 	r.Data.Order = OrderData{
@@ -65,9 +67,12 @@ func (r *OrderResponse) Response(c *gin.Context, order *models.Order) {
 		OrderItems:        mapOrderItems(order.OrderItems),
 	}
 
-	response.Json(c, r.Message, r.Data, 200)
+	response.Json(gin, r.Message, r.Data, 200)
 }
 
+/*
+Helper function to map OrderItems to OrderItem
+*/
 func mapOrderItems(items []models.OrderItem) []OrderItem {
 	var orderItems []OrderItem
 	for _, item := range items {

@@ -1,22 +1,20 @@
 package config
 
-import (
-	pkgEnums "taskgo/pkg/enums"
-)
+import "taskgo/internal/enums"
 
 func init() {
 	Register(databaseConfig)
 }
 
-func databaseConfig() {
-	App.Set("database", map[string]any{
+func databaseConfig(cfg *Config) {
+	cfg.Set("database", map[string]any{
 
 		// This is the default database connection should be valid connection to use.
-		"default": Env("DB_CONNECTION", string(pkgEnums.PostgresDriver)),
+		"default": Env("DB_CONNECTION", string(enums.PostgresDriver)),
 
 		"connections": map[string]any{
 			// Postgres connection
-			string(pkgEnums.PostgresDriver): map[string]any{
+			string(enums.PostgresDriver): map[string]any{
 				"host":     Env("DB_HOST", "localhost"),
 				"port":     Env("DB_PORT", 5432),
 				"user":     Env("DB_USERNAME", "root"),

@@ -9,7 +9,7 @@ import (
 	"taskgo/internal/api/middleware"
 	"taskgo/internal/api/requests"
 	"taskgo/internal/database/models"
-	"taskgo/pkg/database"
+	"taskgo/internal/deps"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -18,9 +18,9 @@ import (
 
 func TestAuthHandler_Login_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := handlers.NewAuthHandler()
+	handler := deps.App[*handlers.AuthHandler]()
 
-	db := database.GetDB()
+	db := deps.Gorm().DB
 	testUser := models.User{
 		FirstName:   "Test",
 		LastName:    "User",
@@ -57,7 +57,7 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 
 func TestAuthHandler_Login_InvalidCredentials(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := handlers.NewAuthHandler()
+	handler := deps.App[*handlers.AuthHandler]()
 
 	loginRequest := requests.LoginRequest{
 		Email:    "nonexistent@example.com",
@@ -69,13 +69,13 @@ func TestAuthHandler_Login_InvalidCredentials(t *testing.T) {
 	wrappedLogin(c)
 
 	assertValidationError(t, w, map[string]string{
-		"email": "User not found",
+		"email": "User does not exist",
 	})
 }
 
 func TestAuthHandler_Login_InvalidJSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	handler := handlers.NewAuthHandler()
+	handler := deps.App[*handlers.AuthHandler]()
 
 	req, _ := http.NewRequest("POST", "/login", bytes.NewBuffer([]byte("invalid json")))
 	req.Header.Set("Content-Type", "application/json")

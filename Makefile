@@ -18,9 +18,15 @@ docs:
 # Run tests
 .PHONY: test
 test:
-	go test ./tests -v --cover
+	go test -race -v -cover  .\...
 
 # Run worker
 .PHONY: worker
 worker:
 	go run cmd/worker/main.go
+
+
+# Run dev docker image 
+.PHONY: dev
+dev:
+	docker-compose -f docker\compose.dev.yml up

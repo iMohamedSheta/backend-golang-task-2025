@@ -7,14 +7,14 @@ import (
 	"github.com/gin-gonic/gin/binding"
 )
 
-func BindToRequestAndExtractFields(c *gin.Context, request contracts.Validatable) error {
-	if err := c.ShouldBindBodyWith(request, binding.JSON); err != nil {
+func BindToRequestAndExtractFields(gin *gin.Context, request contracts.Validatable) error {
+	if err := gin.ShouldBindBodyWith(request, binding.JSON); err != nil {
 		return err
 	}
 
 	// Extract raw fields
 	var raw map[string]any
-	if err := c.ShouldBindBodyWith(&raw, binding.JSON); err != nil {
+	if err := gin.ShouldBindBodyWith(&raw, binding.JSON); err != nil {
 		return err
 	}
 

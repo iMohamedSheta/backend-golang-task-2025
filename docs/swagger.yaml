@@ -1,5 +1,17 @@
 basePath: /api/v1
 definitions:
+  enums.ProductStatus:
+    enum:
+    - available
+    - unavailable
+    - archived
+    - deleted
+    type: string
+    x-enum-varnames:
+    - ProductStatusAvailable
+    - ProductStatusUnavailable
+    - ProductStatusArchived
+    - ProductStatusDeleted
   enums.UserRole:
     enum:
     - customer
@@ -8,6 +20,113 @@ definitions:
     x-enum-varnames:
     - RoleCustomer
     - RoleAdmin
+  models.ProductAttributes:
+    additionalProperties: {}
+    type: object
+  requests.CreateOrderRequest:
+    properties:
+      billing_address:
+        maxLength: 200
+        minLength: 5
+        type: string
+      items:
+        items:
+          $ref: '#/definitions/requests.OrderItemRequest'
+        type: array
+      notes:
+        maxLength: 500
+        type: string
+      payment_method:
+        enum:
+        - credit_card
+        - paypal
+        - bank_transfer
+        - cash_on_delivery
+        type: string
+      shipping_address:
+        maxLength: 200
+        minLength: 5
+        type: string
+      user_id:
+        type: integer
+    required:
+    - billing_address
+    - items
+    - payment_method
+    - shipping_address
+    - user_id
+    type: object
+  requests.CreateProductRequest:
+    properties:
+      attributes:
+        additionalProperties: {}
+        description: Keys and Values are required (dive,keys,required,endkeys,required)
+        type: object
+      brand:
+        maxLength: 50
+        minLength: 2
+        type: string
+      category:
+        maxLength: 50
+        minLength: 2
+        type: string
+      description:
+        maxLength: 500
+        minLength: 10
+        type: string
+      name:
+        maxLength: 100
+        minLength: 3
+        type: string
+      price:
+        maximum: 999999.99
+        type: number
+      status:
+        $ref: '#/definitions/enums.ProductStatus'
+      weight:
+        maximum: 10000
+        type: number
+      weight_unit:
+        enum:
+        - kg
+        - g
+        - lb
+        type: string
+    required:
+    - attributes
+    - brand
+    - category
+    - description
+    - name
+    - price
+    - status
+    type: object
+  requests.CreateUserRequest:
+    properties:
+      email:
+        type: string
+      first_name:
+        maxLength: 30
+        minLength: 2
+        type: string
+      last_name:
+        maxLength: 30
+        minLength: 2
+        type: string
+      password:
+        maxLength: 30
+        minLength: 8
+        type: string
+      phone_number:
+        description: Egypt phone regex
+        type: string
+    required:
+    - email
+    - first_name
+    - last_name
+    - password
+    - phone_number
+    type: object
   requests.LoginRequest:
     properties:
       email:
@@ -22,6 +141,87 @@ definitions:
     - email
     - password
     type: object
+  requests.OrderItemRequest:
+    properties:
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+    required:
+    - product_id
+    - quantity
+    type: object
+  requests.UpdateProductRequest:
+    properties:
+      attributes:
+        additionalProperties: {}
+        description: Keys and Values are required (dive,keys,required,endkeys,required)
+        type: object
+      brand:
+        maxLength: 50
+        minLength: 2
+        type: string
+      category:
+        maxLength: 50
+        minLength: 2
+        type: string
+      description:
+        maxLength: 500
+        minLength: 10
+        type: string
+      name:
+        maxLength: 100
+        minLength: 3
+        type: string
+      price:
+        maximum: 999999.99
+        type: number
+      status:
+        $ref: '#/definitions/enums.ProductStatus'
+      weight:
+        maximum: 10000
+        type: number
+      weight_unit:
+        enum:
+        - kg
+        - g
+        - lb
+        type: string
+    required:
+    - attributes
+    - brand
+    - category
+    - description
+    - name
+    - price
+    - status
+    type: object
+  requests.UpdateUserRequest:
+    properties:
+      email:
+        type: string
+      first_name:
+        maxLength: 30
+        minLength: 2
+        type: string
+      last_name:
+        maxLength: 30
+        minLength: 2
+        type: string
+      password:
+        maxLength: 30
+        minLength: 8
+        type: string
+      phone_number:
+        description: Egypt phone regex
+        type: string
+    required:
+    - email
+    - first_name
+    - last_name
+    - password
+    - phone_number
+    type: object
   response.BadRequestResponse:
     description: Bad request error response
     properties:
@@ -32,6 +232,16 @@ definitions:
         example: Bad request
         type: string
     type: object
+  response.NotFoundResponse:
+    description: Resource not found error response
+    properties:
+      error_code:
+        example: NOT_FOUND
+        type: string
+      message:
+        example: Resource not found
+        type: string
+    type: object
   response.ServerErrorResponse:
     description: Internal server error response
     properties:
@@ -40,6 +250,16 @@ definitions:
         type: string
       message:
         example: Internal Server Error
+        type: string
+    type: object
+  response.UnauthorizedResponse:
+    description: Unauthorized access error response
+    properties:
+      error_code:
+        example: UNAUTHORIZED
+        type: string
+      message:
+        example: Unauthorized action
         type: string
     type: object
   response.ValidationErrorResponse:
@@ -53,6 +273,76 @@ definitions:
         type: string
       message:
         example: Validation failed
+        type: string
+    type: object
+  responses.CreateOrderResponse:
+    properties:
+      data:
+        properties:
+          order:
+            $ref: '#/definitions/responses.OrderData'
+        type: object
+      message:
+        example: Order created successfully
+        type: string
+    type: object
+  responses.CreateProductResponse:
+    properties:
+      data:
+        properties:
+          product:
+            $ref: '#/definitions/responses.ProductData'
+        type: object
+      message:
+        example: Product created successfully
+        type: string
+    type: object
+  responses.CreateUserResponse:
+    properties:
+      data:
+        properties:
+          user:
+            $ref: '#/definitions/responses.UserData'
+        type: object
+      message:
+        example: User created successfully
+        type: string
+    type: object
+  responses.GetProductResponse:
+    properties:
+      data:
+        properties:
+          product:
+            $ref: '#/definitions/responses.ProductData'
+        type: object
+      message:
+        example: Product details retrieved successfully
+        type: string
+    type: object
+  responses.GetUserResponse:
+    properties:
+      data:
+        properties:
+          user:
+            $ref: '#/definitions/responses.UserData'
+        type: object
+      message:
+        example: User retrieved successfully
+        type: string
+    type: object
+  responses.ListProductsResponse:
+    properties:
+      data:
+        properties:
+          meta:
+            $ref: '#/definitions/responses.PaginationMeta'
+          products:
+            items:
+              $ref: '#/definitions/responses.ProductData'
+            type: array
+        type: object
+      message:
+        example: Products retrieved successfully
         type: string
     type: object
   responses.LoginResponse:
@@ -107,6 +397,171 @@ definitions:
         example: User logged in successfully
         type: string
     type: object
+  responses.OrderData:
+    properties:
+      actual_delivery:
+        type: string
+      billing_address:
+        type: string
+      created_at:
+        type: string
+      estimated_delivery:
+        type: string
+      id:
+        type: integer
+      notes:
+        type: string
+      order_items:
+        items:
+          $ref: '#/definitions/responses.OrderItem'
+        type: array
+      shipping_address:
+        type: string
+      status:
+        type: string
+      total_amount:
+        type: number
+      tracking_number:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  responses.OrderItem:
+    properties:
+      created_at:
+        type: string
+      discount:
+        type: number
+      id:
+        type: integer
+      order_id:
+        type: integer
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+      status:
+        type: string
+      tax:
+        type: number
+      total_price:
+        type: number
+      unit_price:
+        type: number
+      updated_at:
+        type: string
+    type: object
+  responses.PaginationMeta:
+    properties:
+      limit:
+        example: 10
+        type: integer
+      next_page:
+        example: 3
+        type: integer
+      page:
+        example: 2
+        type: integer
+      prev_page:
+        example: 1
+        type: integer
+      total:
+        example: 100
+        type: integer
+      total_pages:
+        example: 10
+        type: integer
+    type: object
+  responses.ProductData:
+    properties:
+      attributes:
+        $ref: '#/definitions/models.ProductAttributes'
+      brand:
+        example: brand 1
+        type: string
+      category:
+        example: Category 1
+        type: string
+      description:
+        example: Product 1 description
+        type: string
+      id:
+        example: 1
+        type: integer
+      name:
+        example: Product 1
+        type: string
+      price:
+        example: 1000
+        type: integer
+      sku:
+        example: SKU_1
+        type: string
+      status:
+        example: available
+        type: string
+      weight:
+        example: 10.5
+        type: number
+      weight_unit:
+        example: kg
+        type: string
+    type: object
+  responses.RefreshAccessTokenResponse:
+    properties:
+      data:
+        properties:
+          access_token:
+            example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+            type: string
+        type: object
+      message:
+        example: Access token refreshed successfully
+        type: string
+    type: object
+  responses.UpdateProductResponse:
+    properties:
+      data:
+        properties:
+          product:
+            $ref: '#/definitions/responses.ProductData'
+        type: object
+      message:
+        example: Product updated successfully
+        type: string
+    type: object
+  responses.UpdateUserResponse:
+    properties:
+      data:
+        properties:
+          user:
+            $ref: '#/definitions/responses.UserData'
+        type: object
+      message:
+        example: User updated successfully
+        type: string
+    type: object
+  responses.UserData:
+    properties:
+      created_at:
+        type: string
+      email:
+        type: string
+      first_name:
+        type: string
+      id:
+        type: integer
+      is_active:
+        type: boolean
+      last_login_at:
+        type: string
+      last_name:
+        type: string
+      phone_number:
+        type: string
+    type: object
 host: localhost:8080
 info:
   contact:
@@ -140,7 +595,7 @@ paths:
           schema:
             $ref: '#/definitions/responses.LoginResponse'
         "400":
-          description: Bad request
+          description: Bad Request
           schema:
             $ref: '#/definitions/response.BadRequestResponse'
         "422":
@@ -154,6 +609,393 @@ paths:
       summary: User login
       tags:
       - Authentication
+  /orders:
+    post:
+      consumes:
+      - application/json
+      description: Create a new order
+      parameters:
+      - description: Create order request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.CreateOrderRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Order created successfully
+          schema:
+            $ref: '#/definitions/responses.CreateOrderResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.BadRequestResponse'
+        "401":
+          description: Unauthorized Action
+          schema:
+            $ref: '#/definitions/response.UnauthorizedResponse'
+        "422":
+          description: Validation Error
+          schema:
+            $ref: '#/definitions/response.ValidationErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ServerErrorResponse'
+      summary: Create order
+      tags:
+      - Orders
+  /products:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a paginated list of products.
+      parameters:
+      - in: query
+        name: brand
+        type: string
+      - in: query
+        name: category
+        type: string
+      - in: query
+        name: created_after
+        type: string
+      - in: query
+        name: created_before
+        type: string
+      - in: query
+        name: max_price
+        type: number
+      - description: Price filters
+        in: query
+        name: min_price
+        type: number
+      - description: Search filters
+        in: query
+        name: name
+        type: string
+      - description: Pagination
+        in: query
+        name: page
+        type: integer
+      - in: query
+        name: per_page
+        type: integer
+      - in: query
+        name: search
+        type: string
+      - in: query
+        name: sku
+        type: string
+      - description: Sorting
+        in: query
+        name: sort_by
+        type: string
+      - in: query
+        name: sort_order
+        type: string
+      - in: query
+        name: status
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Success
+          schema:
+            $ref: '#/definitions/responses.ListProductsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.BadRequestResponse'
+        "401":
+          description: Unauthorized Action
+          schema:
+            $ref: '#/definitions/response.UnauthorizedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ServerErrorResponse'
+      summary: List products
+      tags:
+      - Products
+    post:
+      consumes:
+      - application/json
+      description: Creates a new product with the given details.
+      parameters:
+      - description: Create product request body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.CreateProductRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Product created successfully
+          schema:
+            $ref: '#/definitions/responses.CreateProductResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.BadRequestResponse'
+        "401":
+          description: Unauthorized Action
+          schema:
+            $ref: '#/definitions/response.UnauthorizedResponse'
+        "422":
+          description: Validation Error
+          schema:
+            $ref: '#/definitions/response.ValidationErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ServerErrorResponse'
+      summary: Create a new product
+      tags:
+      - Products
+  /products/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves a product by its ID.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Product details retrieved successfully
+          schema:
+            $ref: '#/definitions/responses.GetProductResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.BadRequestResponse'
+        "401":
+          description: Unauthorized Action
+          schema:
+            $ref: '#/definitions/response.UnauthorizedResponse'
+        "404":
+          description: Product not found
+          schema:
+            $ref: '#/definitions/response.NotFoundResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ServerErrorResponse'
+      summary: Get product by ID
+      tags:
+      - Products
+    put:
+      consumes:
+      - application/json
+      description: Updates a product with the given ID and request body.
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update product request body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.UpdateProductRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Product updated successfully
+          schema:
+            $ref: '#/definitions/responses.UpdateProductResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.BadRequestResponse'
+        "401":
+          description: Unauthorized Action
+          schema:
+            $ref: '#/definitions/response.UnauthorizedResponse'
+        "404":
+          description: Product Not Found
+          schema:
+            $ref: '#/definitions/response.NotFoundResponse'
+        "422":
+          description: Validation Error
+          schema:
+            $ref: '#/definitions/response.ValidationErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ServerErrorResponse'
+      summary: Update product by ID
+      tags:
+      - Products
+  /refresh-token:
+    post:
+      consumes:
+      - application/json
+      description: Refresh access token using refresh token
+      parameters:
+      - description: Login request
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Access token refreshed successfully
+          schema:
+            $ref: '#/definitions/responses.RefreshAccessTokenResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.BadRequestResponse'
+        "401":
+          description: Unauthorized Action
+          schema:
+            $ref: '#/definitions/response.UnauthorizedResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ServerErrorResponse'
+      summary: Refresh access token
+      tags:
+      - Authentication
+  /users:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user with the provided information.
+      parameters:
+      - description: Create user request body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.CreateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User created successfully
+          schema:
+            $ref: '#/definitions/responses.CreateUserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.BadRequestResponse'
+        "401":
+          description: Unauthorized Action
+          schema:
+            $ref: '#/definitions/response.UnauthorizedResponse'
+        "422":
+          description: Validation Error
+          schema:
+            $ref: '#/definitions/response.ValidationErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ServerErrorResponse'
+      summary: Create a new user
+      tags:
+      - Users
+  /users/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieves user details by their ID.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User retrieved successfully
+          schema:
+            $ref: '#/definitions/responses.GetUserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.BadRequestResponse'
+        "401":
+          description: Unauthorized Action
+          schema:
+            $ref: '#/definitions/response.UnauthorizedResponse'
+        "404":
+          description: User Not Found
+          schema:
+            $ref: '#/definitions/response.NotFoundResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ServerErrorResponse'
+      summary: Get user by ID
+      tags:
+      - Users
+    put:
+      consumes:
+      - application/json
+      description: Updates an existing user with the provided ID and request body.
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Update user request body
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/requests.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: User updated successfully
+          schema:
+            $ref: '#/definitions/responses.UpdateUserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.BadRequestResponse'
+        "401":
+          description: Unauthorized Action
+          schema:
+            $ref: '#/definitions/response.UnauthorizedResponse'
+        "404":
+          description: User Not Found
+          schema:
+            $ref: '#/definitions/response.NotFoundResponse'
+        "422":
+          description: Validation Error
+          schema:
+            $ref: '#/definitions/response.ValidationErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/response.ServerErrorResponse'
+      summary: Update user by ID
+      tags:
+      - Users
 securityDefinitions:
   BearerAuth:
     description: Type "Bearer" followed by a space and JWT token.

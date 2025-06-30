@@ -1,99 +1,91 @@
 package handlers
 
 import (
-	"net/http"
 	"strings"
 	"taskgo/internal/api/requests"
 	"taskgo/internal/api/responses"
-	"taskgo/internal/repository"
+	"taskgo/internal/deps"
 	"taskgo/internal/services"
 	pkgErrors "taskgo/pkg/errors"
-	"taskgo/pkg/response"
-	"taskgo/pkg/utils"
-	"taskgo/pkg/validate"
 
 	"github.com/gin-gonic/gin"
 )
 
 type AuthHandler struct {
+	Handler
 	authService *services.AuthService
 }
 
-func NewAuthHandler() *AuthHandler {
-	userRepo := repository.NewUserRepository()
+// NewAuthHandler return a new AuthHandler
+func NewAuthHandler(authService *services.AuthService) *AuthHandler {
 	return &AuthHandler{
-		authService: services.NewAuthService(userRepo),
+		authService: authService,
 	}
 }
 
-// AuthHandler examples
-// User login
+// @Summary     User login
+// @Description Authenticate user with email and password
+// @Tags        Authentication
+// @Accept      json
+// @Produce     json
 //
-//		@Router			/login [post]
+// @Param       request  body      requests.LoginRequest            true  "Login request"
 //
-//		@Summary		User login
-//		@Description	Authenticate user with email and password
-//		@Tags			Authentication
-//		@Accept			json
-//		@Produce		json
+// @Success     200      {object}  responses.LoginResponse          "Login successful"
+// @Failure     400      {object}  response.BadRequestResponse      "Bad Request"
+// @Failure     422      {object}  response.ValidationErrorResponse "Validation error"
+// @Failure     500      {object}  response.ServerErrorResponse     "Internal server error"
 //
-//	 @Param			request	body	requests.LoginRequest	true	"Login request"
-//
-//		@Success		200		{object}	responses.LoginResponse		"Login successful"
-//		@Failure		400		{object}	response.BadRequestResponse	"Bad request"
-//		@Failure		422		{object}	response.ValidationErrorResponse "Validation error"
-//		@Failure		500		{object}	response.ServerErrorResponse "Internal server error"
-func (h *AuthHandler) Login(c *gin.Context) error {
+// @Router      /login [post]
+func (h *AuthHandler) Login(gin *gin.Context) error {
 	var req requests.LoginRequest
+	var err error
 
-	if err := utils.BindToRequestAndExtractFields(c, &req); err != nil {
-		return pkgErrors.NewBadRequestError("Bad request", "Failed to bind login request", err)
+	if err = h.BindBodyAndExtractToRequest(gin, &req); err != nil {
+		return pkgErrors.NewBadRequestBindingError("", "Failed to bind and extract request to LoginRequest", err)
 	}
 
-	// Validate request
-	valid, errors := validate.ValidateRequest(&req)
-	if !valid {
-		return pkgErrors.NewValidationError(errors)
+	if err = deps.Validator().ValidateRequest(&req); err != nil {
+		return err
 	}
 
-	// Login user
-	token, refreshToken, user, err := h.authService.Login(&req)
-
+	ctx := gin.Request.Context()
+	token, refreshToken, user, err := h.authService.Login(ctx, &req)
 	if err != nil {
 		return err
 	}
 
-	var loginResponse responses.LoginResponse
-	loginResponse.Response(c, user, token, refreshToken)
+	responses.SendLoginResponse(gin, user, token, refreshToken)
 	return nil
 }
 
-func (h *AuthHandler) RefreshAccessToken(c *gin.Context) error {
-	authHeader := c.GetHeader("Authorization")
+// @Summary     Refresh access token
+// @Description Refresh access token using refresh token
+// @Tags        Authentication
+// @Accept      json
+// @Produce     json
+//
+// @Param       request  body      requests.LoginRequest                 true  "Login request"
+//
+// @Success     200      {object}  responses.RefreshAccessTokenResponse  "Access token refreshed successfully"
+// @Failure     400      {object}  response.BadRequestResponse           "Bad Request"
+// @Failure     401      {object}  response.UnauthorizedResponse         "Unauthorized Action"
+// @Failure     500      {object}  response.ServerErrorResponse          "Internal Server Error"
+//
+// @Router      /refresh-token [post]
+func (h *AuthHandler) RefreshAccessToken(gin *gin.Context) error {
+	authHeader := gin.GetHeader("Authorization")
 	if authHeader == "" || len(authHeader) < 8 || authHeader[:7] != "Bearer " {
-		return pkgErrors.NewUnAuthorizedError("Unauthorized", "No authorization header provided", nil)
+		return pkgErrors.NewUnAuthorizedError("", "No authorization header provided", nil)
 	}
 
 	refreshToken := strings.TrimPrefix(authHeader, "Bearer ")
 
-	accessToken, err := h.authService.RefreshAccessToken(refreshToken)
-
+	accessToken, err := h.authService.RefreshAccessToken(gin.Request.Context(), refreshToken)
 	if err != nil {
-		if unAuthorizedErr, ok := pkgErrors.AsUnAuthorizedError(err); ok {
-			return unAuthorizedErr
-		}
-
-		if serverErr, ok := pkgErrors.AsServerError(err); ok {
-			return serverErr
-		}
-
-		return pkgErrors.NewServerError("Internal server error", "Failed to refresh access token", err)
+		return err
 	}
 
-	// Return new access token
-	response.Json(c, "Access token refreshed successfully", map[string]any{
-		"access_token": accessToken,
-	}, http.StatusOK)
-
+	responses.SendRefreshAccessTokenResponse(gin, accessToken)
 	return nil
 }

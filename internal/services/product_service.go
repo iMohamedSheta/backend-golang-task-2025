@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"taskgo/internal/api/requests"
 	"taskgo/internal/database/models"
@@ -17,12 +18,12 @@ type ProductService struct {
 }
 
 // Create a new product service
-func NewProductService(userRepository *repository.ProductRepository) *ProductService {
-	return &ProductService{productRepository: userRepository}
+func NewProductService(productRepository *repository.ProductRepository) *ProductService {
+	return &ProductService{productRepository: productRepository}
 }
 
 // Create a new product
-func (s *ProductService) CreateProduct(req *requests.CreateProductRequest) (*models.Product, error) {
+func (s *ProductService) CreateProduct(ctx context.Context, req *requests.CreateProductRequest) (*models.Product, error) {
 	product := &models.Product{
 		Name:        req.Name,
 		Price:       req.Price,
@@ -43,7 +44,7 @@ func (s *ProductService) CreateProduct(req *requests.CreateProductRequest) (*mod
 }
 
 // Updates a product
-func (s *ProductService) UpdateProduct(productId string, req *requests.UpdateProductRequest) (*models.Product, error) {
+func (s *ProductService) UpdateProduct(ctx context.Context, productId string, req *requests.UpdateProductRequest) (*models.Product, error) {
 
 	updatedFields := make(map[string]any)
 	sentFields := req.GetRequestSentFields()
@@ -66,7 +67,7 @@ func (s *ProductService) UpdateProduct(productId string, req *requests.UpdatePro
 }
 
 // Get a product by id
-func (s *ProductService) GetProductById(id string) (*models.Product, error) {
+func (s *ProductService) GetProductById(ctx context.Context, id string) (*models.Product, error) {
 	product, err := s.productRepository.FindById(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -78,7 +79,7 @@ func (s *ProductService) GetProductById(id string) (*models.Product, error) {
 }
 
 // Get paginated products
-func (s *ProductService) GetPaginatedProducts(productFilters *filters.ProductFilters) ([]*models.Product, int64, error) {
+func (s *ProductService) GetPaginatedProducts(ctx context.Context, productFilters *filters.ProductFilters) ([]*models.Product, int64, error) {
 	products, total, err := s.productRepository.Paginate(productFilters)
 	if err != nil {
 		return nil, 0, err

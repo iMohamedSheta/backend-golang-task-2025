@@ -5,8 +5,8 @@ func init() {
 }
 
 // Redis configuration for the application
-func queueConfig() {
-	App.Set("queue", map[string]any{
+func queueConfig(cfg *Config) {
+	cfg.Set("queue", map[string]any{
 		// Default Redis connection to use, we will use redis connection (jobs) if it's redis
 		"default":  Env("QUEUE_DEFAULT", "redis"),
 		"enabled":  Env("QUEUE_ACTIVE", true),
@@ -23,6 +23,7 @@ func queueConfig() {
 				"payments":               3,
 				"inventory_check":        3,
 				"order_processing_chain": 6,
+				"notifications":          3,
 			},
 
 			// Retry configuration

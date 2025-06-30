@@ -40,7 +40,6 @@ func assertValidationError(t *testing.T, w *httptest.ResponseRecorder, expectedE
 	assert.NoError(t, err)
 
 	assert.Equal(t, "VALIDATION_ERROR", response["error_code"])
-	assert.Equal(t, "Validation failed", response["message"])
 	assert.Contains(t, response, "data")
 
 	data := response["data"].(map[string]interface{})

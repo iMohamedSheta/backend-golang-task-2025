@@ -2,19 +2,18 @@ package seeders
 
 import (
 	"log"
-	"taskgo/internal/config"
 	"taskgo/internal/database/models"
+	"taskgo/internal/deps"
 	"taskgo/internal/enums"
-	"taskgo/pkg/database"
 	pkgEnums "taskgo/pkg/enums"
 
 	"gorm.io/gorm"
 )
 
 func SeedAdminUser() {
-	db := database.GetDB()
+	db := deps.Gorm().DB
 
-	adminData, err := config.App.Get("app.admins")
+	adminData, err := deps.Config().Get("app.admins")
 	if err != nil {
 		log.Fatalf("Failed to get admin user data from config: %v", err)
 		return

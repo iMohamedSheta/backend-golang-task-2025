@@ -1,11 +1,11 @@
-package cacher
+package utils
 
 import (
 	"context"
 	"fmt"
 	"time"
 
-	pkgRedis "taskgo/pkg/redis"
+	"taskgo/internal/deps"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -18,13 +18,11 @@ const (
 // stores the result in Redis, and returns it.
 func Remember(ctx context.Context, key string, ttl time.Duration, fallback func() (any, error)) (any, error) {
 	// Get Redis connection internally
-	cache, err := pkgRedis.Default()
-	if err != nil {
-		// Optional: log or return fallback directly if Redis is down
-		fmt.Printf("Redis unavailable, using fallback for key %s: %v\n", key, err)
-		return fallback()
-	}
+	cache := deps.Cache().Redis
+
 	var value any
+	var err error
+
 	// Try to get from cache
 	value, err = cache.Get(ctx, key).Result()
 	if err == redis.Nil {

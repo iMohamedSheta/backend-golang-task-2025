@@ -56,7 +56,7 @@ type NotFoundResponse struct {
 // UnauthorizedResponse represents an unauthorized error response
 // @Description Unauthorized access error response
 type UnauthorizedResponse struct {
-	Message   string `json:"message" example:"Unauthorized access"`
+	Message   string `json:"message" example:"Unauthorized action"`
 	ErrorCode string `json:"error_code" example:"UNAUTHORIZED"`
 }
 
@@ -103,7 +103,7 @@ func ServerErrorJson(c *gin.Context, err *pkgErrors.ServerError) {
 func ValidationErrorJson(c *gin.Context, validationError *pkgErrors.ValidationError) {
 	resp := &ValidationErrorResponse{
 		Message:   validationError.PublicError(),
-		ErrorCode: validationError.ErrorCode,
+		ErrorCode: string(validationError.ErrorCode),
 		Data:      validationError.Errors,
 	}
 	c.JSON(enums.ErrCodeValidationError.StatusCode(), resp)
@@ -176,10 +176,7 @@ func BadRequestBindingJson(c *gin.Context, badRequestBindingErr *pkgErrors.BadRe
 		return
 	}
 
-	validationError := &pkgErrors.ValidationError{
-		ErrorCode: string(enums.ErrCodeValidationError),
-		Errors:    fieldErrors,
-	}
+	validationError := pkgErrors.NewValidationError(fieldErrors)
 
 	ValidationErrorJson(c, validationError)
 }

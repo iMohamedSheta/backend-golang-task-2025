@@ -2,16 +2,8 @@ package services
 
 import (
 	"context"
-	"fmt"
-	"strconv"
-	"taskgo/internal/api/requests"
-	"taskgo/internal/cacher"
 	"taskgo/internal/database/models"
 	"taskgo/internal/repository"
-	pkgErrors "taskgo/pkg/errors"
-	"taskgo/pkg/logger"
-	pkgRedis "taskgo/pkg/redis"
-	"taskgo/pkg/utils"
 )
 
 type InventoryService struct {
@@ -27,271 +19,209 @@ func NewInventoryService(inventoryRepository *repository.InventoryRepository, pr
 }
 
 // Reserve inventory for one product
-func (s *InventoryService) ReserveInventory(product models.Product, item requests.OrderItemRequest) error {
-	cache, err := pkgRedis.Default()
-	if err != nil {
-		logger.Channel("inventory_log").Error("Redis connection failed: " + err.Error())
-		return pkgErrors.NewServerError("Internal Server Error", "Internal Server Error: Failed to connect to cache", err)
-	}
+// func (s *InventoryService) ReserveInventory(ctx *gin.Context, product models.Product, item requests.OrderItemRequest) error {
+// 	cache, err := pkgRedis.Default()
+// 	if err != nil {
+// 		logger.Channel("inventory_log").Error("Redis connection failed: " + err.Error())
+// 		return pkgErrors.NewServerError("Internal Server Error", "Internal Server Error: Failed to connect to cache", err)
+// 	}
 
-	ctx := context.Background()
-	inventoryKey, err := product.GetInventoryCacheKey()
-	if err != nil {
-		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to get inventory cache key for product %s: %v", product.Name, err))
-		return pkgErrors.NewServerError("Internal Server Error", "Internal Server Error: Failed to get inventory cache key", err)
-	}
+// 	ctx := context.Background()
 
-	logger.Channel("inventory_log").Info("Checking inventory for product: " + product.Name)
+// 	auth
 
-	_, err = cacher.Remember(ctx, inventoryKey, cacher.RememberForever, func() (any, error) {
-		if err := product.LoadInventory(); err != nil {
-			logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to load inventory for product %s: %v", product.Name, err))
-			return "", pkgErrors.NewServerError("Internal Server Error", "Internal Server Error: Failed to load inventory", err)
-		}
-		return product.Inventory.Quantity, nil
-	})
+// 	inventoryKey, err := product.GetInventoryCacheKey()
+// 	if err != nil {
+// 		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to get inventory cache key for product %s: %v", product.Name, err))
+// 		return pkgErrors.NewServerError("Internal Server Error", "Internal Server Error: Failed to get inventory cache key", err)
+// 	}
 
-	if err != nil {
-		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to remember inventory cache for %s: %v", product.Name, err))
-		return pkgErrors.NewServerError("Internal Server Error", "Internal Server Error: Failed to check inventory", err)
-	}
+// 	logger.Channel("inventory_log").Info("Checking inventory for product: " + product.Name)
 
-	newStock, err := cache.DecrBy(ctx, inventoryKey, int64(item.Quantity)).Result()
-	if err != nil {
-		logger.Channel("inventory_log").Error(fmt.Sprintf("Redis DECRBY failed for %s: %v", inventoryKey, err))
-		return pkgErrors.NewServerError("Internal Server Error", "Internal Server Error: Failed to reserve inventory", err)
-	}
+// 	_, err = cacher.Remember(ctx, inventoryKey, cacher.RememberForever, func() (any, error) {
+// 		if err := product.LoadInventory(); err != nil {
+// 			logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to load inventory for product %s: %v", product.Name, err))
+// 			return "", pkgErrors.NewServerError("Internal Server Error", "Internal Server Error: Failed to load inventory", err)
+// 		}
+// 		return product.Inventory.Quantity, nil
+// 	})
 
-	logger.Channel("inventory_log").Info(fmt.Sprintf("Decremented inventory for %s, new stock: %d", inventoryKey, newStock))
+// 	if err != nil {
+// 		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to remember inventory cache for %s: %v", product.Name, err))
+// 		return pkgErrors.NewServerError("Internal Server Error", "Internal Server Error: Failed to check inventory", err)
+// 	}
 
-	if newStock < 0 {
-		_, rollbackErr := cache.IncrBy(ctx, inventoryKey, int64(item.Quantity)).Result()
-		if rollbackErr != nil {
-			logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to rollback inventory for %s: %v", inventoryKey, rollbackErr))
-		}
-		logger.Channel("inventory_log").Warn(fmt.Sprintf("Reservation failed, stock too low for product %s", product.Name))
+// 	newStock, err := cache.DecrBy(ctx, inventoryKey, int64(item.Quantity)).Result()
+// 	if err != nil {
+// 		logger.Channel("inventory_log").Error(fmt.Sprintf("Redis DECRBY failed for %s: %v", inventoryKey, err))
+// 		return pkgErrors.NewServerError("Internal Server Error", "Internal Server Error: Failed to reserve inventory", err)
+// 	}
 
-		return pkgErrors.NewValidationError(map[string]any{
-			"items": fmt.Sprintf("Insufficient stock for product %s. Stock exhausted during reservation", product.Name),
-		})
-	}
+// 	logger.Channel("inventory_log").Info(fmt.Sprintf("Decremented inventory for %s, new stock: %d", inventoryKey, newStock))
 
-	return nil
-}
+// 	if newStock < 0 {
+// 		_, rollbackErr := cache.IncrBy(ctx, inventoryKey, int64(item.Quantity)).Result()
+// 		if rollbackErr != nil {
+// 			logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to rollback inventory for %s: %v", inventoryKey, rollbackErr))
+// 		}
+// 		logger.Channel("inventory_log").Warn(fmt.Sprintf("Reservation failed, stock too low for product %s", product.Name))
 
+// 		return pkgErrors.NewValidationError(map[string]any{
+// 			"items": fmt.Sprintf("Insufficient stock for product %s. Stock exhausted during reservation", product.Name),
+// 		})
+// 	}
+
+// 	return nil
+// }
+
+// [TODO]: Finish GetInventoryCacheKey implementation to finish the reservation of the order
 // ReserveInventoriesAtomic atomically reserves inventory for multiple products
 // the only way to do this i found is lua script and MULTI in redis but lua script is better for conditional reservation
 // Lua scripts are executed as a single atomic operation in redis, ensuring that no other commands will run in the middle of its execution
-func (s *InventoryService) ReserveInventoriesAtomicTwo(items []requests.OrderItemRequest, productMap map[uint]models.Product) error {
-	cache, err := pkgRedis.Default()
-	if err != nil {
-		logger.Channel("inventory_log").Error("Redis connection failed: " + err.Error())
-		return err
-	}
-	logger.Channel("inventory_log").Info("Executing Lua script to reserve inventory for multiple products redis`")
-	var keys []string
-	var args []interface{}
-	ctx := context.Background()
+func (s *InventoryService) ReserveInventoriesAtomic(ctx context.Context, order *models.Order, orderItems []models.OrderItem) error {
+	// cache := deps.Cache().Redis
+	// log := deps.Log().Channel("inventory_log")
+	// if cache == nil {
+	// 	return errors.New("InventoryService: ReserveInventoriesAtomic redis cache connection failed")
+	// }
 
-	for _, item := range items {
-		product := productMap[item.ProductId]
-		key, err := product.GetInventoryCacheKey()
-		if err != nil {
-			logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to get inventory cache key for product  %s:  %v", product.Name, err))
-			return pkgErrors.NewServerError("Internal Server Error", "Failed to get inventory cache key for product", err)
-		}
+	// // Extract unique product IDs from order items
+	// productIDs := make([]uint, 0, len(orderItems))
+	// for _, item := range orderItems {
+	// 	productIDs = append(productIDs, item.ProductID)
+	// }
+	// uniqueProductIDs := utils.UniqueSliceUInts(productIDs)
 
-		exists, err := cache.Exists(ctx, key).Result()
-		if err != nil {
-			logger.Channel("inventory_log").Error(fmt.Sprintf("Redis EXISTS check failed for key %s: %v", key, err))
-			return pkgErrors.NewServerError("Redis error checking key existence", "Redis EXISTS error", err)
-		}
+	// // Fetch products with inventory data
+	// products, err := s.productRepository.FindByIDsWithInventory(uniqueProductIDs, "id", "product_id", "quantity")
+	// if err != nil {
+	// 	log.Error("Failed to fetch products: " + err.Error())
+	// 	return err
+	// }
 
-		if exists == 0 {
-			err := cache.Set(ctx, key, product.Inventory.Quantity, 0).Err()
-			if err != nil {
-				logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to seed Redis cache for key %s: %v", key, err))
-				return pkgErrors.NewServerError("Failed to seed inventory into Redis", "Redis SET error", err)
-			}
-			logger.Channel("inventory_log").Info(fmt.Sprintf("Seeded Redis cache for %s with quantity %d", key, product.Inventory.Quantity))
-		}
+	// productMap := make(map[uint]models.Product, len(products))
+	// for _, p := range products {
+	// 	productMap[p.ID] = p
+	// }
 
-		keys = append(keys, key)
-		args = append(args, item.Quantity)
-	}
+	// // Prepare Redis KEYS and ARGS
+	// var redisKeys []string
+	// var redisArgs []any
 
-	luaScript := `
-		for i = 1, #KEYS do
-			local current = tonumber(redis.call("GET", KEYS[i]))
-			local quantity = tonumber(ARGV[i])
-			if not current or current < quantity then
-				return 0
-			end
-		end
-		for i = 1, #KEYS do
-			redis.call("DECRBY", KEYS[i], ARGV[i])
-		end
-		return 1
-	`
+	// for _, item := range orderItems {
+	// 	product, exists := productMap[item.ProductID]
+	// 	if !exists {
+	// 		return pkgErrors.NewServerError("Product not found", "Product not found in DB", nil)
+	// 	}
 
-	result, err := cache.Eval(ctx, luaScript, keys, args...).Int()
-	if err != nil {
-		logger.Channel("inventory_log").Error("Redis Eval script failed: " + err.Error())
-		return pkgErrors.NewServerError("Failed to reserve inventory", "Redis Eval error", err)
-	}
-	if result != 1 {
-		logger.Channel("inventory_log").Warn("Reservation failed for one or more products")
-		return pkgErrors.NewValidationError(map[string]any{
-			"inventory": "Insufficient stock for one or more products",
-		})
-	}
+	// 	key, err := product.GetInventoryCacheKey()
+	// 	if err != nil {
+	// 		logger.Channel("inventory_log").Error(fmt.Sprintf("Cache key error for product %s: %v", product.Name, err))
+	// 		return pkgErrors.NewServerError("Redis error", "Failed to generate inventory key", err)
+	// 	}
 
-	logger.Channel("inventory_log").Info("Inventory reserved successfully for all items")
-	return nil
-}
+	// 	_, err = cacher.Remember(ctx, key, cacher.RememberForever, func() (any, error) {
+	// 		return product.Inventory.Quantity, nil
+	// 	})
 
-func (s *InventoryService) ReserveInventoriesAtomic(order *models.Order, orderItems []models.OrderItem) error {
-	ctx := context.Background()
+	// 	if err != nil {
+	// 		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to set inventory cache for %s: %v", product.Name, err))
+	// 		return pkgErrors.NewServerError("Redis error", "Failed to set inventory in cache", err)
+	// 	}
 
-	cache, err := pkgRedis.Default()
-	if err != nil {
-		logger.Channel("inventory_log").Error("Redis connection failed: " + err.Error())
-		return err
-	}
+	// 	redisKeys = append(redisKeys, key)
+	// 	redisArgs = append(redisArgs, item.Quantity)
+	// }
 
-	// Extract unique product IDs from order items
-	productIDs := make([]uint, 0, len(orderItems))
-	for _, item := range orderItems {
-		productIDs = append(productIDs, item.ProductID)
-	}
-	uniqueProductIDs := utils.UniqueSliceUInts(productIDs)
+	// // Lua script: check and reserve inventory atomically
+	// luaScript := `
+	// 	for i = 1, #KEYS do
+	// 		local current = tonumber(redis.call("GET", KEYS[i]))
+	// 		local quantity = tonumber(ARGV[i])
+	// 		if not current or current < quantity then
+	// 			return 0
+	// 		end
+	// 	end
+	// 	for i = 1, #KEYS do
+	// 		redis.call("DECRBY", KEYS[i], ARGV[i])
+	// 	end
+	// 	return 1
+	// `
 
-	// Fetch products with inventory data
-	products, err := s.productRepository.FindByIDsWithInventory(uniqueProductIDs, "id", "product_id", "quantity")
-	if err != nil {
-		logger.Channel("inventory_log").Error("Failed to fetch products: " + err.Error())
-		return err
-	}
+	// result, err := cache.Eval(ctx, luaScript, redisKeys, redisArgs...).Int()
+	// if err != nil {
+	// 	logger.Channel("inventory_log").Error("Redis Lua Eval failed: " + err.Error())
+	// 	return pkgErrors.NewServerError("Reservation failed", "Lua script error", err)
+	// }
+	// if result != 1 {
+	// 	logger.Channel("inventory_log").Warn("Insufficient inventory for one or more products")
+	// 	return pkgErrors.NewValidationError(map[string]any{
+	// 		"inventory": "Insufficient stock for one or more products",
+	// 	})
+	// }
 
-	productMap := make(map[uint]models.Product, len(products))
-	for _, p := range products {
-		productMap[p.ID] = p
-	}
-
-	// Prepare Redis KEYS and ARGS
-	var redisKeys []string
-	var redisArgs []any
-
-	for _, item := range orderItems {
-		product, exists := productMap[item.ProductID]
-		if !exists {
-			return pkgErrors.NewServerError("Product not found", "Product not found in DB", nil)
-		}
-
-		key, err := product.GetInventoryCacheKey()
-		if err != nil {
-			logger.Channel("inventory_log").Error(fmt.Sprintf("Cache key error for product %s: %v", product.Name, err))
-			return pkgErrors.NewServerError("Redis error", "Failed to generate inventory key", err)
-		}
-
-		_, err = cacher.Remember(ctx, key, cacher.RememberForever, func() (any, error) {
-			return product.Inventory.Quantity, nil
-		})
-
-		if err != nil {
-			logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to set inventory cache for %s: %v", product.Name, err))
-			return pkgErrors.NewServerError("Redis error", "Failed to set inventory in cache", err)
-		}
-
-		redisKeys = append(redisKeys, key)
-		redisArgs = append(redisArgs, item.Quantity)
-	}
-
-	// Lua script: check and reserve inventory atomically
-	luaScript := `
-		for i = 1, #KEYS do
-			local current = tonumber(redis.call("GET", KEYS[i]))
-			local quantity = tonumber(ARGV[i])
-			if not current or current < quantity then
-				return 0
-			end
-		end
-		for i = 1, #KEYS do
-			redis.call("DECRBY", KEYS[i], ARGV[i])
-		end
-		return 1
-	`
-
-	result, err := cache.Eval(ctx, luaScript, redisKeys, redisArgs...).Int()
-	if err != nil {
-		logger.Channel("inventory_log").Error("Redis Lua Eval failed: " + err.Error())
-		return pkgErrors.NewServerError("Reservation failed", "Lua script error", err)
-	}
-	if result != 1 {
-		logger.Channel("inventory_log").Warn("Insufficient inventory for one or more products")
-		return pkgErrors.NewValidationError(map[string]any{
-			"inventory": "Insufficient stock for one or more products",
-		})
-	}
-
-	logger.Channel("inventory_log").Info(fmt.Sprintf("Reserved inventory successfully for order ID %d", order.ID))
+	// logger.Channel("inventory_log").Info(fmt.Sprintf("Reserved inventory successfully for order ID %d", order.ID))
 	return nil
 }
 
 // RestoreInventory restores inventory if order process fails
-func (s *InventoryService) RestoreInventory(product models.Product, quantity int) error {
-	cache, err := pkgRedis.Cache()
-	if err != nil {
-		logger.Channel("inventory_log").Error("Redis connection failed (restore): " + err.Error())
-		return pkgErrors.NewServerError("Internal Server Error: Failed to connect to cache", "Internal Server Error: Failed to connect to cache", err)
-	}
+// func (s *InventoryService) RestoreInventory(ctx context.Context, product models.Product, quantity int) error {
+// 	cache := deps.Cache().Redis
+// 	if cache == nil {
+// 		logger.Channel("inventory_log").Error("Redis connection failed (restore): " + err.Error())
+// 		return pkgErrors.NewServerError("Internal Server Error: Failed to connect to cache", "Internal Server Error: Failed to connect to cache", err)
+// 	}
 
-	ctx := context.Background()
-	inventoryKey, err := product.GetInventoryCacheKey()
-	if err != nil {
-		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to get inventory key for  %s: %v", product.Name, err))
-		return pkgErrors.NewServerError("Internal Server Error", "Internal Server Error: Failed to get inventory key", err)
-	}
+// 	inventoryKey, err := product.GetInventoryCacheKey()
+// 	if err != nil {
+// 		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to get inventory key for  %s: %v", product.Name, err))
+// 		return pkgErrors.NewServerError("Internal Server Error", "Internal Server Error: Failed to get inventory key", err)
+// 	}
 
-	_, err = cache.IncrBy(ctx, inventoryKey, int64(quantity)).Result()
-	if err != nil {
-		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to restore inventory for %s: %v", inventoryKey, err))
-		return pkgErrors.NewServerError("Internal Server Error: Failed to restore inventory", "Internal Server Error: Failed to restore inventory", err)
-	}
+// 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+// 	defer cancel()
 
-	logger.Channel("inventory_log").Info(fmt.Sprintf("Restored %d items to inventory for %s", quantity, product.Name))
-	return nil
-}
+// 	_, err = cache.IncrBy(ctx, inventoryKey, int64(quantity)).Result()
+// 	if err != nil {
+// 		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to restore inventory for %s: %v", inventoryKey, err))
+// 		return pkgErrors.NewServerError("Internal Server Error: Failed to restore inventory", "Internal Server Error: Failed to restore inventory", err)
+// 	}
 
-// SyncInventoryToDB syncs inventory quantity from redis to database this should be scheduled or asynce
-func (s *InventoryService) SyncInventoryToDB(inventory *models.Inventory) error {
-	cache, err := pkgRedis.Default()
-	if err != nil {
-		logger.Channel("inventory_log").Error("Redis connection failed (sync): " + err.Error())
-		return err
-	}
+// 	logger.Channel("inventory_log").Info(fmt.Sprintf("Restored %d items to inventory for %s", quantity, product.Name))
+// 	return nil
+// }
 
-	ctx := context.Background()
-	inventoryKey := inventory.GetInventoryCacheKey()
+// // SyncInventoryToDB syncs inventory quantity from redis to database this should be scheduled or asynce
+// func (s *InventoryService) SyncInventoryToDB(ctx context.Context, inventory *models.Inventory) error {
+// 	cache, err := pkgRedis.Default()
+// 	if err != nil {
+// 		logger.Channel("inventory_log").Error("Redis connection failed (sync): " + err.Error())
+// 		return err
+// 	}
 
-	currentQuantity, err := cache.Get(ctx, inventoryKey).Result()
-	if err != nil {
-		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to get Redis key %s: %v", inventoryKey, err))
-		return err
-	}
+// 	inventoryKey := inventory.GetInventoryCacheKey()
 
-	quantity, err := strconv.Atoi(currentQuantity)
-	if err != nil {
-		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to convert Redis value to int for %s: %v", inventoryKey, err))
-		return err
-	}
+// 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+// 	defer cancel()
 
-	logger.Channel("inventory_log").Info(fmt.Sprintf("Syncing inventory to DB for %s: quantity=%d", inventoryKey, quantity))
-	err = s.inventoryRepository.UpdateQuantity(inventory.ID, quantity)
-	if err != nil {
-		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to update inventory for  %s: %v", inventoryKey, err))
-		return err
-	}
+// 	currentQuantity, err := cache.Get(ctx, inventoryKey).Result()
+// 	if err != nil {
+// 		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to get Redis key %s: %v", inventoryKey, err))
+// 		return err
+// 	}
 
-	return nil
-}
+// 	quantity, err := strconv.Atoi(currentQuantity)
+// 	if err != nil {
+// 		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to convert Redis value to int for %s: %v", inventoryKey, err))
+// 		return err
+// 	}
+
+// 	logger.Channel("inventory_log").Info(fmt.Sprintf("Syncing inventory to DB for %s: quantity=%d", inventoryKey, quantity))
+// 	err = s.inventoryRepository.UpdateQuantity(inventory.ID, quantity)
+// 	if err != nil {
+// 		logger.Channel("inventory_log").Error(fmt.Sprintf("Failed to update inventory for  %s: %v", inventoryKey, err))
+// 		return err
+// 	}
+
+// 	return nil
+// }
